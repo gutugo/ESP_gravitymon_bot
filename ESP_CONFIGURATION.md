@@ -45,7 +45,7 @@ After configuration, the device will send data every **15 minutes** (based on `s
 
 To verify data is being received:
 1. Open Telegram
-2. Find bot `@KhruMu_bot`
+2. Find bot `@YOUR_BOT_USERNAME`
 3. Send `/status` command
 4. You should see your device data
 
@@ -103,7 +103,7 @@ To verify data is being received:
 
 Для проверки получения данных:
 1. Откройте Telegram
-2. Найдите бота `@KhruMu_bot`
+2. Найдите бота `@YOUR_BOT_USERNAME`
 3. Отправьте команду `/status`
 4. Вы должны увидеть данные вашего устройства
 
@@ -123,7 +123,7 @@ To verify data is being received:
 | | |
 |---|---|
 | **API Endpoint** | `http://YOUR_SERVER_IP:8080/api/v1/webhook` |
-| **Telegram Bot** | `@KhruMu_bot` |
+| **Telegram Bot** | `@YOUR_BOT_USERNAME` |
 | **Health Check** | `http://YOUR_SERVER_IP:8080/health` |
 
 ---

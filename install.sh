@@ -630,11 +630,15 @@ server {
 }
 NGXEOF
 
-# Create .env file
+# Create .env file (user must edit with their token)
 cat > .env << 'ENVEOF'
-TELEGRAM_BOT_TOKEN=REDACTED_TOKEN
+TELEGRAM_BOT_TOKEN=your_bot_token_here
 API_TOKEN=
 ENVEOF
+
+echo ""
+echo "IMPORTANT: Edit .env file with your Telegram bot token!"
+echo "  nano .env"
 
 echo ""
 echo "=== Building and starting services ==="
@@ -658,5 +662,5 @@ echo ""
 echo "API Endpoint: http://YOUR_SERVER_IP:8080/api/v1/webhook"
 echo ""
 echo "Configure your ESP to send data to this URL."
-echo "Then open Telegram and message @KhruMu_bot"
+echo "Then open Telegram and message your bot"
 echo "==========================================="
