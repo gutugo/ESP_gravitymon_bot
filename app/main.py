@@ -1,7 +1,7 @@
 import asyncio
 import uvicorn
 from fastapi import FastAPI, HTTPException, Header
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional
 from contextlib import asynccontextmanager
 
@@ -26,8 +26,7 @@ class ISpindelPayload(BaseModel):
     gravity_unit: Optional[str] = "G"
     run_time: Optional[int] = None
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 @asynccontextmanager
