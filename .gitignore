@@ -1,0 +1,36 @@
+# Environment variables (contains secrets)
+.env
+
+# Database
+data/
+*.db
+
+# Internal documentation
+CLAUDE.md
+
+# Claude Code settings
+.claude/
+
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.eggs/
+*.egg-info/
+dist/
+build/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Test files
+graph.jpeg

@@ -1,0 +1,61 @@
+version: "3.8"
+
+services:
+  nginx:
+    image: nginx:alpine
+    container_name: gravitymon-nginx
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx/gravitymon.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - api
+    networks:
+      - gravitymon-net
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    container_name: gravitymon-api
+    command: python main.py
+    environment:
+      - DATABASE_URL=/data/gravitymon.db
+    env_file:
+      - .env
+    volumes:
+      - ./data:/data
+    expose:
+      - "5000"
+    networks:
+      - gravitymon-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:5000/api/v1/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  bot:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    container_name: gravitymon-bot
+    command: python bot.py
+    environment:
+      - DATABASE_URL=/data/gravitymon.db
+    env_file:
+      - .env
+    volumes:
+      - ./data:/data
+    depends_on:
+      - api
+    networks:
+      - gravitymon-net
+    restart: unless-stopped
+
+networks:
+  gravitymon-net:
+    driver: bridge

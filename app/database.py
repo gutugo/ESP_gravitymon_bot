@@ -1,0 +1,291 @@
+import aiosqlite
+from datetime import datetime, timedelta
+from typing import Optional
+from config import settings
+
+DATABASE_URL = settings.database_url
+
+
+async def init_db():
+    """Initialize database with schema."""
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        await db.executescript("""
+            CREATE TABLE IF NOT EXISTS devices (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                device_id TEXT UNIQUE NOT NULL,
+                name TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_seen TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS readings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                device_id TEXT NOT NULL,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                temperature REAL NOT NULL,
+                temp_unit TEXT DEFAULT 'C',
+                gravity REAL NOT NULL,
+                gravity_unit TEXT DEFAULT 'G',
+                angle REAL,
+                battery REAL NOT NULL,
+                rssi INTEGER,
+                interval_sec INTEGER
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_readings_device_time
+            ON readings(device_id, timestamp DESC);
+
+            CREATE TABLE IF NOT EXISTS subscribers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                chat_id INTEGER UNIQUE NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS alerts_sent (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                device_id TEXT NOT NULL,
+                alert_type TEXT NOT NULL,
+                sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        await db.commit()
+
+
+async def upsert_device(device_id: str, name: str):
+    """Insert or update device."""
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        await db.execute("""
+            INSERT INTO devices (device_id, name, last_seen)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(device_id) DO UPDATE SET
+                name = excluded.name,
+                last_seen = CURRENT_TIMESTAMP
+        """, (device_id, name))
+        await db.commit()
+
+
+async def insert_reading(
+    device_id: str,
+    temperature: float,
+    temp_unit: str,
+    gravity: float,
+    gravity_unit: str,
+    battery: float,
+    angle: Optional[float] = None,
+    rssi: Optional[int] = None,
+    interval_sec: Optional[int] = None
+):
+    """Insert a new reading."""
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        await db.execute("""
+            INSERT INTO readings
+            (device_id, temperature, temp_unit, gravity, gravity_unit, angle, battery, rssi, interval_sec)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (device_id, temperature, temp_unit, gravity, gravity_unit, angle, battery, rssi, interval_sec))
+        await db.commit()
+
+
+async def get_latest_reading(device_id: Optional[str] = None):
+    """Get the latest reading for a device or all devices."""
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        db.row_factory = aiosqlite.Row
+        if device_id:
+            cursor = await db.execute("""
+                SELECT r.*, d.name as device_name
+                FROM readings r
+                JOIN devices d ON r.device_id = d.device_id
+                WHERE r.device_id = ?
+                ORDER BY r.timestamp DESC
+                LIMIT 1
+            """, (device_id,))
+        else:
+            cursor = await db.execute("""
+                SELECT r.*, d.name as device_name
+                FROM readings r
+                JOIN devices d ON r.device_id = d.device_id
+                ORDER BY r.timestamp DESC
+                LIMIT 1
+            """)
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+
+async def get_readings_for_period(device_id: str, period: str):
+    """Get readings for a specific time period."""
+    now = datetime.now()
+
+    period_map = {
+        'hour': timedelta(hours=1),
+        'day': timedelta(days=1),
+        'week': timedelta(weeks=1),
+        'month': timedelta(days=30)
+    }
+
+    delta = period_map.get(period, timedelta(days=1))
+    start_time = now - delta
+
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("""
+            SELECT timestamp, temperature, temp_unit, gravity, gravity_unit, battery
+            FROM readings
+            WHERE device_id = ? AND timestamp >= ?
+            ORDER BY timestamp ASC
+        """, (device_id, start_time.strftime('%Y-%m-%d %H:%M:%S')))
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
+
+async def get_all_devices():
+    """Get all registered devices."""
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("""
+            SELECT device_id, name, last_seen
+            FROM devices
+            ORDER BY last_seen DESC
+        """)
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
+
+async def get_default_device():
+    """Get the most recently active device."""
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("""
+            SELECT device_id, name
+            FROM devices
+            ORDER BY last_seen DESC
+            LIMIT 1
+        """)
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+
+async def subscribe(chat_id: int):
+    """Subscribe user to notifications."""
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        await db.execute("""
+            INSERT OR IGNORE INTO subscribers (chat_id) VALUES (?)
+        """, (chat_id,))
+        await db.commit()
+
+
+async def unsubscribe(chat_id: int):
+    """Unsubscribe user from notifications."""
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        await db.execute("DELETE FROM subscribers WHERE chat_id = ?", (chat_id,))
+        await db.commit()
+
+
+async def is_subscribed(chat_id: int) -> bool:
+    """Check if user is subscribed."""
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        cursor = await db.execute(
+            "SELECT 1 FROM subscribers WHERE chat_id = ?", (chat_id,)
+        )
+        row = await cursor.fetchone()
+        return row is not None
+
+
+async def get_all_subscribers():
+    """Get all subscriber chat_ids."""
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        cursor = await db.execute("SELECT chat_id FROM subscribers")
+        rows = await cursor.fetchall()
+        return [row[0] for row in rows]
+
+
+async def should_send_alert(device_id: str, alert_type: str, cooldown_hours: int = 6) -> bool:
+    """Check if alert should be sent (not sent recently)."""
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        cutoff = (datetime.now() - timedelta(hours=cooldown_hours)).strftime('%Y-%m-%d %H:%M:%S')
+        cursor = await db.execute("""
+            SELECT 1 FROM alerts_sent
+            WHERE device_id = ? AND alert_type = ? AND sent_at > ?
+        """, (device_id, alert_type, cutoff))
+        row = await cursor.fetchone()
+        return row is None
+
+
+async def record_alert_sent(device_id: str, alert_type: str):
+    """Record that an alert was sent."""
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        await db.execute("""
+            INSERT INTO alerts_sent (device_id, alert_type) VALUES (?, ?)
+        """, (device_id, alert_type))
+        await db.commit()
+
+
+# ==================== Daily Report Functions ====================
+
+async def get_24h_stats(device_id: str) -> dict:
+    """Get aggregated statistics for the last 24 hours."""
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        start_time = (datetime.now() - timedelta(hours=24)).strftime('%Y-%m-%d %H:%M:%S')
+        cursor = await db.execute("""
+            SELECT
+                MIN(temperature) as temp_min,
+                MAX(temperature) as temp_max,
+                AVG(temperature) as temp_avg,
+                MIN(gravity) as grav_min,
+                MAX(gravity) as grav_max,
+                AVG(gravity) as grav_avg,
+                MIN(battery) as batt_min,
+                MAX(battery) as batt_max,
+                AVG(battery) as batt_avg,
+                AVG(rssi) as rssi_avg,
+                COUNT(*) as reading_count
+            FROM readings
+            WHERE device_id = ? AND timestamp >= ?
+        """, (device_id, start_time))
+        row = await cursor.fetchone()
+        if row and row[0] is not None:
+            return {
+                'temp_min': row[0],
+                'temp_max': row[1],
+                'temp_avg': row[2],
+                'grav_min': row[3],
+                'grav_max': row[4],
+                'grav_avg': row[5],
+                'batt_min': row[6],
+                'batt_max': row[7],
+                'batt_avg': row[8],
+                'rssi_avg': row[9],
+                'reading_count': row[10]
+            }
+        return None
+
+
+async def get_first_reading_24h(device_id: str) -> dict:
+    """Get the first reading from 24 hours ago for delta calculation."""
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        db.row_factory = aiosqlite.Row
+        start_time = (datetime.now() - timedelta(hours=24)).strftime('%Y-%m-%d %H:%M:%S')
+        cursor = await db.execute("""
+            SELECT gravity, temperature, battery, timestamp
+            FROM readings
+            WHERE device_id = ? AND timestamp >= ?
+            ORDER BY timestamp ASC
+            LIMIT 1
+        """, (device_id, start_time))
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+
+async def get_alerts_count_24h(device_id: str) -> int:
+    """Count alerts triggered in the last 24 hours."""
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        start_time = (datetime.now() - timedelta(hours=24)).strftime('%Y-%m-%d %H:%M:%S')
+        cursor = await db.execute("""
+            SELECT COUNT(*) FROM alerts_sent
+            WHERE device_id = ? AND sent_at >= ?
+        """, (device_id, start_time))
+        row = await cursor.fetchone()
+        return row[0] if row else 0
+
+
+def get_expected_readings_count(interval_sec: int = 900) -> int:
+    """Calculate expected number of readings in 24h based on interval."""
+    return int(24 * 60 * 60 / interval_sec)
