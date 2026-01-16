@@ -220,26 +220,48 @@ async def record_alert_sent(device_id: str, alert_type: str):
 
 # ==================== Daily Report Functions ====================
 
-async def get_24h_stats(device_id: str) -> dict:
-    """Get aggregated statistics for the last 24 hours."""
+async def get_24h_stats(device_id: str, start_time: Optional[datetime] = None, end_time: Optional[datetime] = None) -> dict:
+    """Get aggregated statistics for a time period (default: last 24 hours)."""
     async with aiosqlite.connect(DATABASE_URL) as db:
-        start_time = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime('%Y-%m-%d %H:%M:%S')
-        cursor = await db.execute("""
-            SELECT
-                MIN(temperature) as temp_min,
-                MAX(temperature) as temp_max,
-                AVG(temperature) as temp_avg,
-                MIN(gravity) as grav_min,
-                MAX(gravity) as grav_max,
-                AVG(gravity) as grav_avg,
-                MIN(battery) as batt_min,
-                MAX(battery) as batt_max,
-                AVG(battery) as batt_avg,
-                AVG(rssi) as rssi_avg,
-                COUNT(*) as reading_count
-            FROM readings
-            WHERE device_id = ? AND timestamp >= ?
-        """, (device_id, start_time))
+        if start_time is None:
+            start_time = datetime.now(timezone.utc) - timedelta(hours=24)
+        start_str = start_time.strftime('%Y-%m-%d %H:%M:%S')
+
+        if end_time:
+            end_str = end_time.strftime('%Y-%m-%d %H:%M:%S')
+            cursor = await db.execute("""
+                SELECT
+                    MIN(temperature) as temp_min,
+                    MAX(temperature) as temp_max,
+                    AVG(temperature) as temp_avg,
+                    MIN(gravity) as grav_min,
+                    MAX(gravity) as grav_max,
+                    AVG(gravity) as grav_avg,
+                    MIN(battery) as batt_min,
+                    MAX(battery) as batt_max,
+                    AVG(battery) as batt_avg,
+                    AVG(rssi) as rssi_avg,
+                    COUNT(*) as reading_count
+                FROM readings
+                WHERE device_id = ? AND timestamp >= ? AND timestamp < ?
+            """, (device_id, start_str, end_str))
+        else:
+            cursor = await db.execute("""
+                SELECT
+                    MIN(temperature) as temp_min,
+                    MAX(temperature) as temp_max,
+                    AVG(temperature) as temp_avg,
+                    MIN(gravity) as grav_min,
+                    MAX(gravity) as grav_max,
+                    AVG(gravity) as grav_avg,
+                    MIN(battery) as batt_min,
+                    MAX(battery) as batt_max,
+                    AVG(battery) as batt_avg,
+                    AVG(rssi) as rssi_avg,
+                    COUNT(*) as reading_count
+                FROM readings
+                WHERE device_id = ? AND timestamp >= ?
+            """, (device_id, start_str))
         row = await cursor.fetchone()
         if row and row[0] is not None:
             return {
@@ -258,30 +280,70 @@ async def get_24h_stats(device_id: str) -> dict:
         return None
 
 
-async def get_first_reading_24h(device_id: str) -> dict:
-    """Get the first reading from 24 hours ago for delta calculation."""
+async def get_first_reading_24h(device_id: str, start_time: Optional[datetime] = None, end_time: Optional[datetime] = None) -> dict:
+    """Get the first reading in time period for delta calculation."""
     async with aiosqlite.connect(DATABASE_URL) as db:
         db.row_factory = aiosqlite.Row
-        start_time = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime('%Y-%m-%d %H:%M:%S')
-        cursor = await db.execute("""
-            SELECT gravity, temperature, battery, timestamp
-            FROM readings
-            WHERE device_id = ? AND timestamp >= ?
-            ORDER BY timestamp ASC
-            LIMIT 1
-        """, (device_id, start_time))
+        if start_time is None:
+            start_time = datetime.now(timezone.utc) - timedelta(hours=24)
+        start_str = start_time.strftime('%Y-%m-%d %H:%M:%S')
+
+        if end_time:
+            end_str = end_time.strftime('%Y-%m-%d %H:%M:%S')
+            cursor = await db.execute("""
+                SELECT gravity, temperature, battery, timestamp
+                FROM readings
+                WHERE device_id = ? AND timestamp >= ? AND timestamp < ?
+                ORDER BY timestamp ASC
+                LIMIT 1
+            """, (device_id, start_str, end_str))
+        else:
+            cursor = await db.execute("""
+                SELECT gravity, temperature, battery, timestamp
+                FROM readings
+                WHERE device_id = ? AND timestamp >= ?
+                ORDER BY timestamp ASC
+                LIMIT 1
+            """, (device_id, start_str))
         row = await cursor.fetchone()
         return dict(row) if row else None
 
 
-async def get_alerts_count_24h(device_id: str) -> int:
-    """Count alerts triggered in the last 24 hours."""
+async def get_last_reading_in_period(device_id: str, start_time: datetime, end_time: datetime) -> dict:
+    """Get the last reading in time period for delta calculation."""
     async with aiosqlite.connect(DATABASE_URL) as db:
-        start_time = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime('%Y-%m-%d %H:%M:%S')
+        db.row_factory = aiosqlite.Row
+        start_str = start_time.strftime('%Y-%m-%d %H:%M:%S')
+        end_str = end_time.strftime('%Y-%m-%d %H:%M:%S')
         cursor = await db.execute("""
-            SELECT COUNT(*) FROM alerts_sent
-            WHERE device_id = ? AND sent_at >= ?
-        """, (device_id, start_time))
+            SELECT gravity, temperature, battery, timestamp
+            FROM readings
+            WHERE device_id = ? AND timestamp >= ? AND timestamp < ?
+            ORDER BY timestamp DESC
+            LIMIT 1
+        """, (device_id, start_str, end_str))
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+
+async def get_alerts_count_24h(device_id: str, start_time: Optional[datetime] = None, end_time: Optional[datetime] = None) -> int:
+    """Count alerts triggered in time period (default: last 24 hours)."""
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        if start_time is None:
+            start_time = datetime.now(timezone.utc) - timedelta(hours=24)
+        start_str = start_time.strftime('%Y-%m-%d %H:%M:%S')
+
+        if end_time:
+            end_str = end_time.strftime('%Y-%m-%d %H:%M:%S')
+            cursor = await db.execute("""
+                SELECT COUNT(*) FROM alerts_sent
+                WHERE device_id = ? AND sent_at >= ? AND sent_at < ?
+            """, (device_id, start_str, end_str))
+        else:
+            cursor = await db.execute("""
+                SELECT COUNT(*) FROM alerts_sent
+                WHERE device_id = ? AND sent_at >= ?
+            """, (device_id, start_str))
         row = await cursor.fetchone()
         return row[0] if row else 0
 

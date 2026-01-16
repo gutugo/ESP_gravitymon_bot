@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import uvicorn
 from fastapi import FastAPI, HTTPException, Header
 from pydantic import BaseModel, ConfigDict
@@ -8,6 +9,13 @@ from contextlib import asynccontextmanager
 from config import settings
 import database
 import alerts
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 
 class ISpindelPayload(BaseModel):
@@ -29,11 +37,21 @@ class ISpindelPayload(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
+def handle_task_exception(task: asyncio.Task):
+    """Handle exceptions from background tasks."""
+    try:
+        task.result()
+    except asyncio.CancelledError:
+        pass
+    except Exception as e:
+        logger.error(f"Background task failed: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize database on startup."""
     await database.init_db()
-    print("Database initialized")
+    logger.info("Database initialized")
     yield
 
 
@@ -96,16 +114,17 @@ async def receive_data(
             interval_sec=payload.interval
         )
 
-        print(f"Received data from {payload.name}: temp={payload.temperature}, gravity={payload.gravity}, battery={payload.battery}")
+        logger.info(f"Received data from {payload.name}: temp={payload.temperature}, gravity={payload.gravity}, battery={payload.battery}")
 
         # Check and send alerts (async, don't wait)
-        asyncio.create_task(
+        task = asyncio.create_task(
             alerts.check_and_send_alerts(
                 device_id=payload.ID,
                 device_name=payload.name,
                 battery=payload.battery
             )
         )
+        task.add_done_callback(handle_task_exception)
 
         return {
             "status": "ok",
@@ -114,7 +133,7 @@ async def receive_data(
         }
 
     except Exception as e:
-        print(f"Error processing data: {e}")
+        logger.error(f"Error processing data: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
