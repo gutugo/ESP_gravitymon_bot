@@ -14,27 +14,27 @@ PERIOD_CONFIG = {
     'hour': {
         'title': '1 час',
         'date_format': '%H:%M',
-        'locator': mdates.MinuteLocator(interval=5),
+        'locator_factory': lambda: mdates.MinuteLocator(interval=5),
     },
     'day': {
         'title': '1 день',
         'date_format': '%H:%M',
-        'locator': mdates.MinuteLocator(interval=30),
+        'locator_factory': lambda: mdates.MinuteLocator(interval=30),
     },
     'week': {
         'title': '1 неделя',
         'date_format': '%d %b %H:%M',
-        'locator': mdates.HourLocator(interval=12),
+        'locator_factory': lambda: mdates.HourLocator(interval=12),
     },
     'month': {
         'title': '1 месяц',
         'date_format': '%d %b',
-        'locator': mdates.DayLocator(interval=1),
+        'locator_factory': lambda: mdates.DayLocator(interval=1),
     },
     'custom': {
         'title': 'Диапазон',
         'date_format': '%d %b',
-        'locator': mdates.DayLocator(interval=1),
+        'locator_factory': lambda: mdates.DayLocator(interval=1),
     },
 }
 
@@ -46,29 +46,29 @@ def get_config_for_range(start_date: datetime, end_date: datetime) -> dict:
     if days <= 1:
         return {
             'date_format': '%H:%M',
-            'locator': mdates.MinuteLocator(interval=30),
+            'locator_factory': lambda: mdates.MinuteLocator(interval=30),
         }
     elif days <= 7:
         return {
             'date_format': '%d %b %H:%M',
-            'locator': mdates.HourLocator(interval=12),
+            'locator_factory': lambda: mdates.HourLocator(interval=12),
         }
     elif days <= 30:
         return {
             'date_format': '%d %b',
-            'locator': mdates.DayLocator(interval=1),
+            'locator_factory': lambda: mdates.DayLocator(interval=1),
         }
     elif days <= 90:
         return {
             'date_format': '%d %b',
-            'locator': mdates.DayLocator(interval=3),
+            'locator_factory': lambda: mdates.DayLocator(interval=3),
         }
     else:
         # For longer ranges, use weekly intervals
         interval = max(1, days // 30)
         return {
             'date_format': '%d %b',
-            'locator': mdates.DayLocator(interval=interval),
+            'locator_factory': lambda: mdates.DayLocator(interval=interval),
         }
 
 # Colors
@@ -146,7 +146,7 @@ def generate_graph(
 
     # X-axis formatting with explicit timezone
     ax1.xaxis.set_major_formatter(mdates.DateFormatter(config['date_format'], tz=TZ_UTC7))
-    ax1.xaxis.set_major_locator(config['locator'])
+    ax1.xaxis.set_major_locator(config['locator_factory']())
     ax1.tick_params(axis='x', labelsize=8, labelrotation=90)
     for label in ax1.get_xticklabels():
         label.set_color(COLOR_TEXT)

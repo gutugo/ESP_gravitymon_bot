@@ -236,10 +236,9 @@ async def callback_status(callback: CallbackQuery):
             parse_mode=ParseMode.HTML,
             reply_markup=get_main_keyboard()
         )
+        await callback.answer()
     else:
         await callback.answer("Нет данных от устройства", show_alert=True)
-
-    await callback.answer()
 
 
 @router.callback_query(MenuCallback.filter(F.action == "graphs"))
@@ -272,10 +271,9 @@ async def callback_devices_menu(callback: CallbackQuery):
             parse_mode=ParseMode.HTML,
             reply_markup=get_devices_keyboard(devices, current_device)
         )
+        await callback.answer()
     else:
         await callback.answer("Нет зарегистрированных устройств", show_alert=True)
-
-    await callback.answer()
 
 
 @router.callback_query(MenuCallback.filter(F.action == "export"))
@@ -303,12 +301,16 @@ async def callback_export_excel(callback: CallbackQuery):
     await callback.answer("Отправка файла...")
 
     # Send file
-    document = FSInputFile(excel_path)
-    await bot.send_document(
-        chat_id=callback.message.chat.id,
-        document=document,
-        caption=f"📊 Данные устройства: {device_name}"
-    )
+    try:
+        document = FSInputFile(excel_path)
+        await bot.send_document(
+            chat_id=callback.message.chat.id,
+            document=document,
+            caption=f"📊 Данные устройства: {device_name}"
+        )
+    except Exception as e:
+        logger.error(f"Failed to send Excel file: {e}")
+        await callback.message.answer("❌ Ошибка при отправке файла")
 
 
 @router.callback_query(DeviceCallback.filter(F.action == "select"))
