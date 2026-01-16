@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 import database
 from typing import Optional
 from config import TZ_UTC7
@@ -102,9 +102,10 @@ async def generate_daily_report(device_id: str, device_name: str) -> Optional[st
     alerts_count = await database.get_alerts_count_24h(device_id)
     alerts_text = "Нет ✓" if alerts_count == 0 else f"{alerts_count} шт. ⚠️"
 
-    # Build message (use UTC+7 for date)
+    # Build message (use yesterday's date in UTC+7, report covers 00:00-24:00)
+    yesterday = datetime.now(TZ_UTC7) - timedelta(days=1)
     message = f"""📊 <b>ЕЖЕДНЕВНЫЙ ОТЧЁТ</b>
-📅 {datetime.now(TZ_UTC7).strftime("%d.%m.%Y")}
+📅 {yesterday.strftime("%d.%m.%Y")} (00:00 — 24:00)
 📱 <b>{device_name}</b>
 ━━━━━━━━━━━━━━
 
