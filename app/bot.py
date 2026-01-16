@@ -192,10 +192,11 @@ async def cmd_status(message: Message):
 @router.message(Command("graph"))
 async def cmd_graph(message: Message):
     """Handle /graph command."""
+    custom_dates = user_custom_dates.get(message.from_user.id)
     await message.answer(
         "📈 <b>Выберите параметры графика:</b>",
         parse_mode=ParseMode.HTML,
-        reply_markup=get_graph_keyboard()
+        reply_markup=get_graph_keyboard(custom_dates=custom_dates)
     )
 
 
@@ -243,13 +244,14 @@ async def callback_status(callback: CallbackQuery):
 @router.callback_query(MenuCallback.filter(F.action == "graphs"))
 async def callback_graphs_menu(callback: CallbackQuery):
     """Show graphs menu - delete and send new for single dashboard."""
+    custom_dates = user_custom_dates.get(callback.from_user.id)
     chat_id = callback.message.chat.id
     await callback.message.delete()
     await bot.send_message(
         chat_id=chat_id,
         text="📈 <b>Выберите параметры графика:</b>",
         parse_mode=ParseMode.HTML,
-        reply_markup=get_graph_keyboard()
+        reply_markup=get_graph_keyboard(custom_dates=custom_dates)
     )
     await callback.answer()
 
@@ -411,6 +413,13 @@ async def callback_custom_range(callback: CallbackQuery, callback_data: GraphCal
 @router.message(GraphStates.waiting_for_start_date)
 async def process_start_date(message: Message, state: FSMContext):
     """Process start date input."""
+    if not message.text:
+        await message.answer(
+            "❌ Пожалуйста, введите дату текстом в формате ГГГГ-ММ-ДД",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
     date_text = message.text.strip()
 
     # Validate date format
@@ -451,6 +460,13 @@ async def process_start_date(message: Message, state: FSMContext):
 @router.message(GraphStates.waiting_for_end_date)
 async def process_end_date(message: Message, state: FSMContext):
     """Process end date input."""
+    if not message.text:
+        await message.answer(
+            "❌ Пожалуйста, введите дату текстом в формате ГГГГ-ММ-ДД",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
     date_text = message.text.strip()
 
     # Validate date format
@@ -536,6 +552,14 @@ async def callback_generate_graph(callback: CallbackQuery, callback_data: GraphC
     custom_dates = user_custom_dates.get(callback.from_user.id)
     start_date = None
     end_date = None
+
+    # Check if custom period is selected but no dates are set
+    if callback_data.period == "custom" and not custom_dates:
+        await callback.message.answer(
+            "❌ Сначала выберите диапазон дат, нажав кнопку «📅 Диапазон»",
+            parse_mode=ParseMode.HTML
+        )
+        return
 
     # Get readings based on period type
     if callback_data.period == "custom" and custom_dates:
