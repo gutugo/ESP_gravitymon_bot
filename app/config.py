@@ -1,5 +1,9 @@
 import os
+from datetime import timezone, timedelta
 from pydantic_settings import BaseSettings
+
+# UTC+7 timezone (e.g., Bangkok, Jakarta, Novosibirsk)
+TZ_UTC7 = timezone(timedelta(hours=7))
 
 
 class Settings(BaseSettings):

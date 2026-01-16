@@ -1,6 +1,7 @@
 from datetime import datetime
 import database
 from typing import Optional
+from config import TZ_UTC7
 
 
 def calculate_abv(og: float, fg: float) -> float:
@@ -101,9 +102,9 @@ async def generate_daily_report(device_id: str, device_name: str) -> Optional[st
     alerts_count = await database.get_alerts_count_24h(device_id)
     alerts_text = "Нет ✓" if alerts_count == 0 else f"{alerts_count} шт. ⚠️"
 
-    # Build message
+    # Build message (use UTC+7 for date)
     message = f"""📊 <b>ЕЖЕДНЕВНЫЙ ОТЧЁТ</b>
-📅 {datetime.now().strftime("%d.%m.%Y")}
+📅 {datetime.now(TZ_UTC7).strftime("%d.%m.%Y")}
 📱 <b>{device_name}</b>
 ━━━━━━━━━━━━━━
 

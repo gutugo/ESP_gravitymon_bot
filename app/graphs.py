@@ -7,6 +7,7 @@ from matplotlib.ticker import MultipleLocator
 from datetime import datetime
 from io import BytesIO
 from typing import List, Dict
+from config import TZ_UTC7
 
 
 PERIOD_CONFIG = {
@@ -64,6 +65,11 @@ def generate_graph(
             ts = r['timestamp']
             if isinstance(ts, str):
                 ts = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+            # Convert to UTC+7 for display
+            if ts.tzinfo:
+                ts = ts.astimezone(TZ_UTC7)
+            else:
+                ts = ts.replace(tzinfo=TZ_UTC7)
             timestamps.append(ts)
             temperatures.append(r['temperature'])
             gravities.append(r['gravity'])

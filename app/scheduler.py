@@ -1,11 +1,11 @@
 import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-import pytz
 
 import database
 from daily_report import generate_daily_report
 from alerts import send_telegram_message
+from config import TZ_UTC7
 
 logger = logging.getLogger(__name__)
 
@@ -61,8 +61,8 @@ def start_scheduler():
 
     scheduler = AsyncIOScheduler()
 
-    # Daily report at 01:00 UTC = 08:00 UTC+7
-    trigger = CronTrigger(hour=1, minute=0, timezone=pytz.UTC)
+    # Daily report at 08:00 UTC+7
+    trigger = CronTrigger(hour=8, minute=0, timezone=TZ_UTC7)
 
     scheduler.add_job(
         send_daily_reports,
@@ -73,7 +73,7 @@ def start_scheduler():
     )
 
     scheduler.start()
-    logger.info("Scheduler started. Daily report scheduled at 01:00 UTC (08:00 UTC+7)")
+    logger.info("Scheduler started. Daily report scheduled at 08:00 UTC+7")
 
     return scheduler
 

@@ -6,7 +6,7 @@ from aiogram.types import Message, CallbackQuery, BufferedInputFile
 from aiogram.filters import Command
 from aiogram.enums import ParseMode
 
-from config import settings
+from config import settings, TZ_UTC7
 import database
 import graphs
 import scheduler
@@ -32,13 +32,17 @@ user_devices: dict[int, str] = {}
 
 
 def format_time_ago(timestamp) -> str:
-    """Format timestamp as 'X minutes ago' in Russian."""
+    """Format timestamp as 'X minutes ago' in Russian (UTC+7)."""
     if isinstance(timestamp, str):
         timestamp = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
 
-    now = datetime.now()
+    # Always use UTC+7 for time calculations
+    now = datetime.now(TZ_UTC7)
     if timestamp.tzinfo:
-        now = datetime.now(timestamp.tzinfo)
+        timestamp = timestamp.astimezone(TZ_UTC7)
+    else:
+        # Assume naive timestamps are UTC, convert to UTC+7
+        timestamp = timestamp.replace(tzinfo=TZ_UTC7)
 
     diff = now - timestamp
     minutes = int(diff.total_seconds() / 60)
