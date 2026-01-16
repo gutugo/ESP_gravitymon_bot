@@ -7,6 +7,7 @@ from aiogram.filters import Command
 from aiogram.enums import ParseMode
 
 from config import settings, TZ_UTC7
+from datetime import timezone
 import database
 import graphs
 import scheduler
@@ -41,8 +42,8 @@ def format_time_ago(timestamp) -> str:
     if timestamp.tzinfo:
         timestamp = timestamp.astimezone(TZ_UTC7)
     else:
-        # Assume naive timestamps are UTC, convert to UTC+7
-        timestamp = timestamp.replace(tzinfo=TZ_UTC7)
+        # Naive timestamps from DB are UTC, convert to UTC+7
+        timestamp = timestamp.replace(tzinfo=timezone.utc).astimezone(TZ_UTC7)
 
     diff = now - timestamp
     minutes = int(diff.total_seconds() / 60)
