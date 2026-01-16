@@ -94,8 +94,8 @@ def generate_graph(
     ax1.grid(True, alpha=0.3, color=COLOR_GRID, linestyle='-')
     ax1.tick_params(colors=COLOR_TEXT)
 
-    # X-axis formatting
-    ax1.xaxis.set_major_formatter(mdates.DateFormatter(config['date_format']))
+    # X-axis formatting with explicit timezone
+    ax1.xaxis.set_major_formatter(mdates.DateFormatter(config['date_format'], tz=TZ_UTC7))
     ax1.xaxis.set_major_locator(config['locator'])
     ax1.tick_params(axis='x', labelsize=8, labelrotation=90)
     for label in ax1.get_xticklabels():

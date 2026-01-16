@@ -119,7 +119,7 @@ async def generate_daily_report(device_id: str, device_name: str) -> Optional[st
 
     # Build message
     message = f"""📊 <b>ЕЖЕДНЕВНЫЙ ОТЧЁТ</b>
-📅 {yesterday_utc7.strftime("%d.%m.%Y")} (00:00 — 24:00)
+📅 {yesterday_utc7.strftime("%d.%m.%Y")}
 📱 <b>{device_name}</b>
 ━━━━━━━━━━━━━━
 
@@ -132,7 +132,7 @@ async def generate_daily_report(device_id: str, device_name: str) -> Optional[st
 ├ Начало: {first_gravity:.4f} SG
 ├ Конец: {last_reading['gravity']:.4f} SG
 ├ Δ: {gravity_delta:+.4f} ({ferm_status})
-└ ABV: ~{abv:.1f}%
+└ Алкоголь: ~{abv:.1f}% об.
 
 🔋 <b>БАТАРЕЯ:</b>
 ├ Уровень: {last_reading['battery']:.2f}V {batt_icon}
