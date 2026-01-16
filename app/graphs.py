@@ -4,7 +4,7 @@ matplotlib.use('Agg')  # Non-interactive backend
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from matplotlib.ticker import MultipleLocator
-from datetime import datetime
+from datetime import datetime, timezone
 from io import BytesIO
 from typing import List, Dict
 from config import TZ_UTC7
@@ -65,11 +65,11 @@ def generate_graph(
             ts = r['timestamp']
             if isinstance(ts, str):
                 ts = datetime.fromisoformat(ts.replace('Z', '+00:00'))
-            # Convert to UTC+7 for display
+            # Convert to UTC+7 for display (DB stores UTC)
             if ts.tzinfo:
                 ts = ts.astimezone(TZ_UTC7)
             else:
-                ts = ts.replace(tzinfo=TZ_UTC7)
+                ts = ts.replace(tzinfo=timezone.utc).astimezone(TZ_UTC7)
             timestamps.append(ts)
             temperatures.append(r['temperature'])
             gravities.append(r['gravity'])

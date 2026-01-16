@@ -1,13 +1,12 @@
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.types import Message, CallbackQuery, BufferedInputFile
 from aiogram.filters import Command
 from aiogram.enums import ParseMode
 
 from config import settings, TZ_UTC7
-from datetime import timezone
 import database
 import graphs
 import scheduler
@@ -306,8 +305,8 @@ async def callback_change_period(callback: CallbackQuery, callback_data: GraphCa
                     show_gravity=callback_data.show_gravity
                 )
             )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Failed to edit message in callback_change_period: {e}")
     await callback.answer()
 
 
@@ -338,8 +337,8 @@ async def callback_toggle_graph(callback: CallbackQuery, callback_data: GraphCal
                     show_gravity=callback_data.show_gravity
                 )
             )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Failed to edit message in callback_toggle_graph: {e}")
     await callback.answer()
 
 
