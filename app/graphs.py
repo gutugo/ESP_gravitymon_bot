@@ -97,7 +97,7 @@ def generate_graph(
     # X-axis formatting
     ax1.xaxis.set_major_formatter(mdates.DateFormatter(config['date_format']))
     ax1.xaxis.set_major_locator(config['locator'])
-    ax1.tick_params(axis='x', labelsize=8)
+    ax1.tick_params(axis='x', labelsize=8, labelrotation=90)
     for label in ax1.get_xticklabels():
         label.set_color(COLOR_TEXT)
 
@@ -162,7 +162,6 @@ def generate_graph(
                    facecolor=COLOR_BG, edgecolor=COLOR_GRID, labelcolor=COLOR_TEXT)
 
     # Adjust layout
-    fig.autofmt_xdate()
     plt.tight_layout()
 
     # Save to buffer
