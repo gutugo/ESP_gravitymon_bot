@@ -6,6 +6,7 @@ import database
 from daily_report import generate_daily_report
 from alerts import send_telegram_message
 from config import TZ_UTC7
+from excel_export import generate_device_excel
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,18 @@ async def send_daily_reports():
                     logger.error(f"Failed to send report to {chat_id}: {e}")
 
         logger.info("Daily report generation completed")
+
+        # Generate Excel exports for each device
+        logger.info("Generating Excel exports...")
+        for device in devices:
+            try:
+                filepath = await generate_device_excel(device['device_id'], device['name'])
+                if filepath:
+                    logger.info(f"Excel export generated for {device['name']}")
+                else:
+                    logger.warning(f"No data for Excel export: {device['name']}")
+            except Exception as e:
+                logger.error(f"Failed to generate Excel for {device['name']}: {e}")
 
     except Exception as e:
         logger.error(f"Error in daily report job: {e}")

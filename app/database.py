@@ -381,3 +381,19 @@ async def get_alerts_count_24h(device_id: str, start_time: Optional[datetime] = 
 def get_expected_readings_count(interval_sec: int = 900) -> int:
     """Calculate expected number of readings in 24h based on interval."""
     return int(24 * 60 * 60 / interval_sec)
+
+
+# ==================== Excel Export Functions ====================
+
+async def get_all_readings_for_device(device_id: str) -> list[dict]:
+    """Get all readings for a device (for Excel export)."""
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("""
+            SELECT timestamp, temperature, temp_unit, gravity, battery, rssi, angle, interval_sec
+            FROM readings
+            WHERE device_id = ?
+            ORDER BY timestamp ASC
+        """, (device_id,))
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]

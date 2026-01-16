@@ -2,7 +2,7 @@ import asyncio
 import logging
 from datetime import datetime, timezone, timedelta
 from aiogram import Bot, Dispatcher, Router, F
-from aiogram.types import Message, CallbackQuery, BufferedInputFile
+from aiogram.types import Message, CallbackQuery, BufferedInputFile, FSInputFile
 from aiogram.filters import Command
 from aiogram.enums import ParseMode
 from aiogram.fsm.context import FSMContext
@@ -12,6 +12,7 @@ from config import settings, TZ_UTC7
 import database
 import graphs
 import scheduler
+from excel_export import get_device_excel_path
 from handlers.keyboards import (
     MenuCallback, GraphCallback, DeviceCallback,
     get_main_keyboard, get_graph_keyboard, get_devices_keyboard
@@ -275,6 +276,39 @@ async def callback_devices_menu(callback: CallbackQuery):
         await callback.answer("Нет зарегистрированных устройств", show_alert=True)
 
     await callback.answer()
+
+
+@router.callback_query(MenuCallback.filter(F.action == "export"))
+async def callback_export_excel(callback: CallbackQuery):
+    """Send Excel export file."""
+    device_id = user_devices.get(callback.from_user.id)
+    if not device_id:
+        device = await database.get_default_device()
+        if not device:
+            await callback.answer("❌ Нет устройств", show_alert=True)
+            return
+        device_id = device['device_id']
+        device_name = device['name']
+    else:
+        device = await database.get_latest_reading(device_id)
+        device_name = device.get('device_name', 'Device') if device else 'Device'
+
+    # Get Excel file path
+    excel_path = get_device_excel_path(device_name)
+
+    if not excel_path:
+        await callback.answer("❌ Файл не найден. Экспорт обновляется ежедневно в 08:00", show_alert=True)
+        return
+
+    await callback.answer("Отправка файла...")
+
+    # Send file
+    document = FSInputFile(excel_path)
+    await bot.send_document(
+        chat_id=callback.message.chat.id,
+        document=document,
+        caption=f"📊 Данные устройства: {device_name}"
+    )
 
 
 @router.callback_query(DeviceCallback.filter(F.action == "select"))

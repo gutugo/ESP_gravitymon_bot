@@ -3,7 +3,7 @@ from aiogram.filters.callback_data import CallbackData
 
 
 class MenuCallback(CallbackData, prefix="menu"):
-    action: str  # "status", "graphs", "refresh", "devices"
+    action: str  # "status", "graphs", "refresh", "devices", "export"
 
 
 class GraphCallback(CallbackData, prefix="graph"):
@@ -35,6 +35,10 @@ def get_main_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton(
                 text="📱 Устройства",
                 callback_data=MenuCallback(action="devices").pack()
+            ),
+            InlineKeyboardButton(
+                text="📊 XLSX",
+                callback_data=MenuCallback(action="export").pack()
             )
         ]
     ])

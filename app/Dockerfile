@@ -20,7 +20,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Create data directory
-RUN mkdir -p /data
+RUN mkdir -p /data /data/exports
 
 # Default command (can be overridden in docker-compose)
 CMD ["python", "main.py"]
