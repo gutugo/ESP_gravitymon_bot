@@ -14,12 +14,12 @@ PERIOD_CONFIG = {
     'hour': {
         'title': '1 час',
         'date_format': '%H:%M',
-        'locator': mdates.MinuteLocator(interval=10),
+        'locator': mdates.MinuteLocator(interval=30),
     },
     'day': {
         'title': '1 день',
         'date_format': '%H:%M',
-        'locator': mdates.HourLocator(interval=4),
+        'locator': mdates.MinuteLocator(interval=30),
     },
     'week': {
         'title': '1 неделя',
