@@ -136,6 +136,36 @@ async def get_readings_for_period(device_id: str, period: str):
         return [dict(row) for row in rows]
 
 
+async def get_readings_for_date_range(device_id: str, start_date: datetime, end_date: datetime):
+    """Get readings between start_date and end_date (UTC)."""
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("""
+            SELECT timestamp, temperature, temp_unit, gravity, gravity_unit, battery
+            FROM readings
+            WHERE device_id = ? AND timestamp >= ? AND timestamp <= ?
+            ORDER BY timestamp ASC
+        """, (device_id, start_date.strftime('%Y-%m-%d %H:%M:%S'), end_date.strftime('%Y-%m-%d %H:%M:%S')))
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
+
+async def get_device_date_range(device_id: str) -> tuple[datetime, datetime] | None:
+    """Get min and max timestamp for a device's readings."""
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        cursor = await db.execute("""
+            SELECT MIN(timestamp), MAX(timestamp)
+            FROM readings
+            WHERE device_id = ?
+        """, (device_id,))
+        row = await cursor.fetchone()
+        if row and row[0] and row[1]:
+            min_ts = datetime.fromisoformat(row[0]).replace(tzinfo=timezone.utc)
+            max_ts = datetime.fromisoformat(row[1]).replace(tzinfo=timezone.utc)
+            return (min_ts, max_ts)
+        return None
+
+
 async def get_all_devices():
     """Get all registered devices."""
     async with aiosqlite.connect(DATABASE_URL) as db:

@@ -1,10 +1,12 @@
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.types import Message, CallbackQuery, BufferedInputFile
 from aiogram.filters import Command
 from aiogram.enums import ParseMode
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 
 from config import settings, TZ_UTC7
 import database
@@ -29,6 +31,15 @@ router = Router()
 
 # Store user's selected device (in-memory, could be moved to DB)
 user_devices: dict[int, str] = {}
+
+# Store user's custom date ranges for graphs
+user_custom_dates: dict[int, tuple[str, str]] = {}  # user_id -> (start_date, end_date)
+
+
+class GraphStates(StatesGroup):
+    """FSM states for custom date range input."""
+    waiting_for_start_date = State()
+    waiting_for_end_date = State()
 
 
 def format_time_ago(timestamp) -> str:
@@ -287,6 +298,7 @@ async def callback_select_device(callback: CallbackQuery, callback_data: DeviceC
 @router.callback_query(GraphCallback.filter(F.action == "period"))
 async def callback_change_period(callback: CallbackQuery, callback_data: GraphCallback):
     """Handle period change."""
+    custom_dates = user_custom_dates.get(callback.from_user.id)
     try:
         if callback.message.photo:
             await callback.message.edit_caption(
@@ -294,7 +306,8 @@ async def callback_change_period(callback: CallbackQuery, callback_data: GraphCa
                 reply_markup=get_graph_keyboard(
                     period=callback_data.period,
                     show_temp=callback_data.show_temp,
-                    show_gravity=callback_data.show_gravity
+                    show_gravity=callback_data.show_gravity,
+                    custom_dates=custom_dates
                 )
             )
         else:
@@ -302,7 +315,8 @@ async def callback_change_period(callback: CallbackQuery, callback_data: GraphCa
                 reply_markup=get_graph_keyboard(
                     period=callback_data.period,
                     show_temp=callback_data.show_temp,
-                    show_gravity=callback_data.show_gravity
+                    show_gravity=callback_data.show_gravity,
+                    custom_dates=custom_dates
                 )
             )
     except Exception as e:
@@ -319,6 +333,7 @@ async def callback_toggle_graph(callback: CallbackQuery, callback_data: GraphCal
         await callback.answer("Выберите хотя бы один график!", show_alert=True)
         return
 
+    custom_dates = user_custom_dates.get(callback.from_user.id)
     try:
         if callback.message.photo:
             await callback.message.edit_caption(
@@ -326,7 +341,8 @@ async def callback_toggle_graph(callback: CallbackQuery, callback_data: GraphCal
                 reply_markup=get_graph_keyboard(
                     period=callback_data.period,
                     show_temp=callback_data.show_temp,
-                    show_gravity=callback_data.show_gravity
+                    show_gravity=callback_data.show_gravity,
+                    custom_dates=custom_dates
                 )
             )
         else:
@@ -334,12 +350,172 @@ async def callback_toggle_graph(callback: CallbackQuery, callback_data: GraphCal
                 reply_markup=get_graph_keyboard(
                     period=callback_data.period,
                     show_temp=callback_data.show_temp,
-                    show_gravity=callback_data.show_gravity
+                    show_gravity=callback_data.show_gravity,
+                    custom_dates=custom_dates
                 )
             )
     except Exception as e:
         logger.warning(f"Failed to edit message in callback_toggle_graph: {e}")
     await callback.answer()
+
+
+@router.callback_query(GraphCallback.filter(F.action == "custom_range"))
+async def callback_custom_range(callback: CallbackQuery, callback_data: GraphCallback, state: FSMContext):
+    """Handle custom date range selection."""
+    device_id = user_devices.get(callback.from_user.id)
+    if not device_id:
+        device = await database.get_default_device()
+        if device:
+            device_id = device['device_id']
+        else:
+            await callback.answer("❌ Нет устройств", show_alert=True)
+            return
+
+    # Get available date range for device
+    date_range = await database.get_device_date_range(device_id)
+    if not date_range:
+        await callback.answer("❌ Нет данных для устройства", show_alert=True)
+        return
+
+    min_date, max_date = date_range
+    min_date_local = min_date.astimezone(TZ_UTC7)
+    max_date_local = max_date.astimezone(TZ_UTC7)
+
+    # Store callback data for later use
+    await state.update_data(
+        show_temp=callback_data.show_temp,
+        show_gravity=callback_data.show_gravity,
+        device_id=device_id,
+        min_date=min_date_local.strftime('%Y-%m-%d'),
+        max_date=max_date_local.strftime('%Y-%m-%d')
+    )
+
+    chat_id = callback.message.chat.id
+    await callback.message.delete()
+
+    await bot.send_message(
+        chat_id=chat_id,
+        text=(
+            f"📅 <b>Введите начальную дату</b> (ГГГГ-ММ-ДД)\n\n"
+            f"Доступный диапазон:\n"
+            f"<code>{min_date_local.strftime('%Y-%m-%d')}</code> — <code>{max_date_local.strftime('%Y-%m-%d')}</code>\n\n"
+            f"Максимальный период: 1 год"
+        ),
+        parse_mode=ParseMode.HTML
+    )
+
+    await state.set_state(GraphStates.waiting_for_start_date)
+    await callback.answer()
+
+
+@router.message(GraphStates.waiting_for_start_date)
+async def process_start_date(message: Message, state: FSMContext):
+    """Process start date input."""
+    date_text = message.text.strip()
+
+    # Validate date format
+    try:
+        start_date = datetime.strptime(date_text, '%Y-%m-%d')
+    except ValueError:
+        await message.answer(
+            "❌ Неверный формат даты. Используйте ГГГГ-ММ-ДД\n"
+            "Например: <code>2025-01-01</code>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    data = await state.get_data()
+    min_date = datetime.strptime(data['min_date'], '%Y-%m-%d')
+    max_date = datetime.strptime(data['max_date'], '%Y-%m-%d')
+
+    # Validate date is within range
+    if start_date.date() < min_date.date() or start_date.date() > max_date.date():
+        await message.answer(
+            f"❌ Дата вне диапазона!\n"
+            f"Доступно: <code>{data['min_date']}</code> — <code>{data['max_date']}</code>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    await state.update_data(start_date=date_text)
+
+    await message.answer(
+        f"✓ Начало: <b>{date_text}</b>\n\n"
+        f"📅 <b>Введите конечную дату</b> (ГГГГ-ММ-ДД)",
+        parse_mode=ParseMode.HTML
+    )
+
+    await state.set_state(GraphStates.waiting_for_end_date)
+
+
+@router.message(GraphStates.waiting_for_end_date)
+async def process_end_date(message: Message, state: FSMContext):
+    """Process end date input."""
+    date_text = message.text.strip()
+
+    # Validate date format
+    try:
+        end_date = datetime.strptime(date_text, '%Y-%m-%d')
+    except ValueError:
+        await message.answer(
+            "❌ Неверный формат даты. Используйте ГГГГ-ММ-ДД\n"
+            "Например: <code>2025-01-15</code>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    data = await state.get_data()
+    start_date = datetime.strptime(data['start_date'], '%Y-%m-%d')
+    max_date = datetime.strptime(data['max_date'], '%Y-%m-%d')
+
+    # Validate end date >= start date
+    if end_date.date() < start_date.date():
+        await message.answer(
+            f"❌ Конечная дата должна быть >= начальной!\n"
+            f"Начальная дата: <code>{data['start_date']}</code>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # Validate end date within range
+    if end_date.date() > max_date.date():
+        await message.answer(
+            f"❌ Дата вне диапазона!\n"
+            f"Максимум: <code>{data['max_date']}</code>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # Validate range <= 1 year
+    days_diff = (end_date - start_date).days
+    if days_diff > 365:
+        await message.answer(
+            f"❌ Диапазон слишком большой!\n"
+            f"Максимум: 365 дней\n"
+            f"Выбрано: {days_diff} дней",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # Store custom dates
+    user_custom_dates[message.from_user.id] = (data['start_date'], date_text)
+
+    # Clear state
+    await state.clear()
+
+    # Return to graph keyboard with custom period selected
+    custom_dates = user_custom_dates.get(message.from_user.id)
+    await message.answer(
+        f"✓ Диапазон установлен: <b>{data['start_date']}</b> — <b>{date_text}</b>\n\n"
+        f"📈 <b>Выберите параметры графика:</b>",
+        parse_mode=ParseMode.HTML,
+        reply_markup=get_graph_keyboard(
+            period="custom",
+            show_temp=data.get('show_temp', True),
+            show_gravity=data.get('show_gravity', True),
+            custom_dates=custom_dates
+        )
+    )
 
 
 @router.callback_query(GraphCallback.filter(F.action == "generate"))
@@ -356,8 +532,21 @@ async def callback_generate_graph(callback: CallbackQuery, callback_data: GraphC
             await callback.message.answer("❌ Нет устройств для отображения")
             return
 
-    # Get readings
-    readings = await database.get_readings_for_period(device_id, callback_data.period)
+    # Get custom dates if using custom period
+    custom_dates = user_custom_dates.get(callback.from_user.id)
+    start_date = None
+    end_date = None
+
+    # Get readings based on period type
+    if callback_data.period == "custom" and custom_dates:
+        # Parse dates and convert to UTC for database query
+        start_local = datetime.strptime(custom_dates[0], '%Y-%m-%d').replace(tzinfo=TZ_UTC7)
+        end_local = datetime.strptime(custom_dates[1], '%Y-%m-%d').replace(hour=23, minute=59, second=59, tzinfo=TZ_UTC7)
+        start_date = start_local.astimezone(timezone.utc)
+        end_date = end_local.astimezone(timezone.utc)
+        readings = await database.get_readings_for_date_range(device_id, start_date, end_date)
+    else:
+        readings = await database.get_readings_for_period(device_id, callback_data.period)
 
     # Get device name
     device = await database.get_latest_reading(device_id)
@@ -369,7 +558,9 @@ async def callback_generate_graph(callback: CallbackQuery, callback_data: GraphC
         device_name=device_name,
         period=callback_data.period,
         show_temperature=callback_data.show_temp,
-        show_gravity=callback_data.show_gravity
+        show_gravity=callback_data.show_gravity,
+        start_date=start_date,
+        end_date=end_date
     )
 
     # Send photo (delete old message first to keep single dashboard)
@@ -388,7 +579,8 @@ async def callback_generate_graph(callback: CallbackQuery, callback_data: GraphC
         reply_markup=get_graph_keyboard(
             period=callback_data.period,
             show_temp=callback_data.show_temp,
-            show_gravity=callback_data.show_gravity
+            show_gravity=callback_data.show_gravity,
+            custom_dates=custom_dates
         )
     )
 

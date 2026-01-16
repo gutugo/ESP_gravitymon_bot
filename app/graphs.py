@@ -6,7 +6,7 @@ import matplotlib.dates as mdates
 from matplotlib.ticker import MultipleLocator
 from datetime import datetime, timezone
 from io import BytesIO
-from typing import List, Dict
+from typing import List, Dict, Optional
 from config import TZ_UTC7
 
 
@@ -31,7 +31,45 @@ PERIOD_CONFIG = {
         'date_format': '%d %b',
         'locator': mdates.DayLocator(interval=1),
     },
+    'custom': {
+        'title': 'Диапазон',
+        'date_format': '%d %b',
+        'locator': mdates.DayLocator(interval=1),
+    },
 }
+
+
+def get_config_for_range(start_date: datetime, end_date: datetime) -> dict:
+    """Get dynamic config based on date range."""
+    days = (end_date - start_date).days
+
+    if days <= 1:
+        return {
+            'date_format': '%H:%M',
+            'locator': mdates.MinuteLocator(interval=30),
+        }
+    elif days <= 7:
+        return {
+            'date_format': '%d %b %H:%M',
+            'locator': mdates.HourLocator(interval=12),
+        }
+    elif days <= 30:
+        return {
+            'date_format': '%d %b',
+            'locator': mdates.DayLocator(interval=1),
+        }
+    elif days <= 90:
+        return {
+            'date_format': '%d %b',
+            'locator': mdates.DayLocator(interval=3),
+        }
+    else:
+        # For longer ranges, use weekly intervals
+        interval = max(1, days // 30)
+        return {
+            'date_format': '%d %b',
+            'locator': mdates.DayLocator(interval=interval),
+        }
 
 # Colors
 COLOR_TEMP = '#FF4444'      # Red for temperature
@@ -46,13 +84,15 @@ def generate_graph(
     device_name: str,
     period: str,
     show_temperature: bool = True,
-    show_gravity: bool = True
+    show_gravity: bool = True,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None
 ) -> BytesIO:
     """
     Generate dual-axis temperature and gravity graph.
     """
     if not readings:
-        return _generate_empty_graph(device_name, period)
+        return _generate_empty_graph(device_name, period, start_date, end_date)
 
     # Parse data
     timestamps = []
@@ -78,13 +118,23 @@ def generate_graph(
             continue
 
     if not timestamps:
-        return _generate_empty_graph(device_name, period)
+        return _generate_empty_graph(device_name, period, start_date, end_date)
 
     # Check if at least one graph is enabled
     if not show_temperature and not show_gravity:
-        return _generate_empty_graph(device_name, period)
+        return _generate_empty_graph(device_name, period, start_date, end_date)
 
-    config = PERIOD_CONFIG.get(period, PERIOD_CONFIG['day'])
+    # Get config - use dynamic config for custom period
+    if period == 'custom' and start_date and end_date:
+        base_config = PERIOD_CONFIG.get('custom')
+        dynamic_config = get_config_for_range(start_date, end_date)
+        config = {**base_config, **dynamic_config}
+        # Generate title with date range
+        start_local = start_date.astimezone(TZ_UTC7)
+        end_local = end_date.astimezone(TZ_UTC7)
+        config['title'] = f"{start_local.strftime('%d.%m')} — {end_local.strftime('%d.%m.%Y')}"
+    else:
+        config = PERIOD_CONFIG.get(period, PERIOD_CONFIG['day'])
 
     # Create figure with dark background
     fig, ax1 = plt.subplots(figsize=(10, 6), facecolor=COLOR_BG)
@@ -174,9 +224,21 @@ def generate_graph(
     return buf
 
 
-def _generate_empty_graph(device_name: str, period: str) -> BytesIO:
+def _generate_empty_graph(
+    device_name: str,
+    period: str,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None
+) -> BytesIO:
     """Generate a placeholder graph when no data is available."""
-    config = PERIOD_CONFIG.get(period, PERIOD_CONFIG['day'])
+    # Get title for custom period
+    if period == 'custom' and start_date and end_date:
+        start_local = start_date.astimezone(TZ_UTC7)
+        end_local = end_date.astimezone(TZ_UTC7)
+        title = f"{start_local.strftime('%d.%m')} — {end_local.strftime('%d.%m.%Y')}"
+    else:
+        config = PERIOD_CONFIG.get(period, PERIOD_CONFIG['day'])
+        title = config["title"]
 
     fig, ax = plt.subplots(figsize=(10, 6), facecolor=COLOR_BG)
     ax.set_facecolor(COLOR_BG)
@@ -194,7 +256,7 @@ def _generate_empty_graph(device_name: str, period: str) -> BytesIO:
     ax.axis('off')
 
     fig.suptitle(
-        f'{device_name} — {config["title"]}',
+        f'{device_name} — {title}',
         fontsize=14,
         fontweight='bold',
         color=COLOR_TEXT

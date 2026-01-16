@@ -43,7 +43,8 @@ def get_main_keyboard() -> InlineKeyboardMarkup:
 def get_graph_keyboard(
     period: str = "day",
     show_temp: bool = True,
-    show_gravity: bool = True
+    show_gravity: bool = True,
+    custom_dates: tuple[str, str] | None = None
 ) -> InlineKeyboardMarkup:
     """Graph selection keyboard."""
     # Period buttons
@@ -69,6 +70,24 @@ def get_graph_keyboard(
                 ).pack()
             )
         )
+
+    # Custom date range button
+    if custom_dates:
+        start_short = custom_dates[0][5:]  # MM-DD from YYYY-MM-DD
+        end_short = custom_dates[1][5:]
+        custom_label = f"• 📅 {start_short} — {end_short} •" if period == "custom" else f"📅 {start_short} — {end_short}"
+    else:
+        custom_label = "• 📅 Диапазон •" if period == "custom" else "📅 Диапазон"
+
+    custom_button = InlineKeyboardButton(
+        text=custom_label,
+        callback_data=GraphCallback(
+            action="custom_range",
+            period="custom",
+            show_temp=show_temp,
+            show_gravity=show_gravity
+        ).pack()
+    )
 
     # Toggle buttons
     temp_label = "✅ Температура" if show_temp else "❌ Температура"
@@ -115,6 +134,7 @@ def get_graph_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=[
         period_buttons[:2],  # First row: Hour, Day
         period_buttons[2:],  # Second row: Week, Month
+        [custom_button],     # Custom date range button
         toggle_buttons,      # Toggle row
         [generate_button],   # Generate button
         [back_button]        # Back button
