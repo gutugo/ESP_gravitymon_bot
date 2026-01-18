@@ -378,6 +378,31 @@ async def get_alerts_count_24h(device_id: str, start_time: Optional[datetime] = 
         return row[0] if row else 0
 
 
+async def get_alerts_24h(device_id: str, start_time: Optional[datetime] = None, end_time: Optional[datetime] = None) -> list[dict]:
+    """Get alerts with details in time period (default: last 24 hours)."""
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        db.row_factory = aiosqlite.Row
+        if start_time is None:
+            start_time = datetime.now(timezone.utc) - timedelta(hours=24)
+        start_str = start_time.strftime('%Y-%m-%d %H:%M:%S')
+
+        if end_time:
+            end_str = end_time.strftime('%Y-%m-%d %H:%M:%S')
+            cursor = await db.execute("""
+                SELECT alert_type, sent_at FROM alerts_sent
+                WHERE device_id = ? AND sent_at >= ? AND sent_at < ?
+                ORDER BY sent_at ASC
+            """, (device_id, start_str, end_str))
+        else:
+            cursor = await db.execute("""
+                SELECT alert_type, sent_at FROM alerts_sent
+                WHERE device_id = ? AND sent_at >= ?
+                ORDER BY sent_at ASC
+            """, (device_id, start_str))
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
+
 def get_expected_readings_count(interval_sec: int = 900) -> int:
     """Calculate expected number of readings in 24h based on interval."""
     return int(24 * 60 * 60 / interval_sec)

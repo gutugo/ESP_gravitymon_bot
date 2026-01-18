@@ -113,9 +113,22 @@ async def generate_daily_report(device_id: str, device_name: str) -> Optional[st
     missed = max(0, expected - actual)
     missed_icon = "✓" if missed == 0 else "⚠️"
 
-    # Get alerts count for yesterday
-    alerts_count = await database.get_alerts_count_24h(device_id, day_start_utc, day_end_utc)
-    alerts_text = "Нет ✓" if alerts_count == 0 else f"{alerts_count} шт. ⚠️"
+    # Get alerts for yesterday
+    alerts = await database.get_alerts_24h(device_id, day_start_utc, day_end_utc)
+    if not alerts:
+        alerts_section = "⚠️ <b>СОБЫТИЯ:</b> Нет ✓"
+    else:
+        alert_type_names = {
+            "battery_low": "🪫 Низкий заряд",
+            "battery_critical": "🚨 Крит. заряд",
+        }
+        alerts_section = f"⚠️ <b>СОБЫТИЯ:</b> {len(alerts)} шт."
+        for alert in alerts:
+            alert_name = alert_type_names.get(alert['alert_type'], alert['alert_type'])
+            # Parse UTC time and convert to UTC+7
+            alert_time_utc = datetime.strptime(alert['sent_at'], '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)
+            alert_time_local = alert_time_utc.astimezone(TZ_UTC7)
+            alerts_section += f"\n├ {alert_time_local.strftime('%H:%M')} — {alert_name}"
 
     # Build message
     message = f"""📊 <b>ЕЖЕДНЕВНЫЙ ОТЧЁТ</b>
@@ -144,6 +157,6 @@ async def generate_daily_report(device_id: str, device_name: str) -> Optional[st
 ├ Пропущено: {missed} {missed_icon}
 └ Интервал: {interval // 60} мин
 
-⚠️ <b>СОБЫТИЯ:</b> {alerts_text}"""
+{alerts_section}"""
 
     return message
