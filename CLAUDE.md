@@ -43,6 +43,12 @@ ESP (HTTP POST) → Nginx:8080 → FastAPI:5000 → SQLite
 | `/adduser <id>` | Add user to whitelist |
 | `/rmuser <id>` | Remove user (cannot remove master admin) |
 
+### Admin Panel (inline buttons)
+- Main menu shows **⚙️ Админ** button for master admin only
+- Admin panel displays all whitelisted users with Telegram names
+- **❌** button to remove a user (master admin cannot be removed)
+- **➕ Добавить** button to add a user by chat_id
+
 ## Daily Report
 - **Schedule:** 08:00 UTC+7 (01:00 UTC)
 - **Recipients:** All subscribers
@@ -101,23 +107,22 @@ asyncio.run(test())"
 - `alerts_sent` - cooldown tracking
 - `allowed_users` - bot access whitelist
 
-## Recent Changes (2026-01-16)
+## ESP Configuration
+- Webhook URL must be set on the ESP device via its web interface
+- **Configuration** → **Push Targets** → **HTTP Post** → URL: `http://213.139.210.66:8080/api/v1/webhook`
+- See `ESP_CONFIGURATION.md` for full instructions
 
-### Bug Fixes
-- Fixed double `callback.answer()` in `bot.py` (callback_status, callback_devices_menu)
-- Fixed matplotlib locator singleton reuse in `graphs.py` (changed to `locator_factory` lambdas)
-- Added error handling for Excel file send in `callback_export_excel`
+## Recent Changes (2026-02-01)
 
-### Features Added (Previous Sessions)
-- Custom date range for graphs (📅 Диапазон button)
-- Daily Excel export (📊 XLSX button)
-- Graph time scale improvements (5min/12h/1day ticks)
+### Features
+- Master admin role (`MASTER_ADMIN` env var) with dynamic whitelist management
+- Admin commands: `/users`, `/adduser`, `/rmuser`
+- Admin panel with inline buttons (⚙️ Админ in main menu)
+- Whitelist stored in DB (`allowed_users` table), seeded from `ALLOWED_USERS` env on first run
+- Migrated server from 193.233.204.221 to 213.139.210.66
 
-### Security
-- GitHub repo audited: no leaks found
-- `.env` properly gitignored, only placeholders in `.env.example`
-
-### Test Plan
-- Full test coverage plan saved at `.claude/plans/clever-percolating-cerf.md`
-- ~100 tests planned across 10 test files
-- Not yet implemented
+### Previous Changes (2026-01-16)
+- Fixed double `callback.answer()` in `bot.py`
+- Fixed matplotlib locator singleton reuse in `graphs.py`
+- Custom date range for graphs, daily Excel export
+- GitHub repo security audit: no leaks found
