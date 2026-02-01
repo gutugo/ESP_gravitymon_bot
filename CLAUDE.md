@@ -1,10 +1,10 @@
 # GravityMon Telegram Bot
 
 ## Server
-- **IP:** 193.233.204.221
-- **SSH:** `ssh root@193.233.204.221`
+- **IP:** 213.139.210.66
+- **SSH:** `ssh root@213.139.210.66`
 - **Project path:** `/opt/gravitymon/`
-- **API endpoint:** `http://193.233.204.221:8080/api/v1/webhook`
+- **API endpoint:** `http://213.139.210.66:8080/api/v1/webhook`
 
 ## Architecture
 ```
@@ -58,7 +58,7 @@ ESP (HTTP POST) → Nginx:8080 → FastAPI:5000 → SQLite
 ```bash
 # Git remotes: origin (GitHub), server (production)
 git push server main
-ssh root@193.233.204.221 "cd /opt/gravitymon && docker-compose build bot && docker-compose up -d bot"
+ssh root@213.139.210.66 "cd /opt/gravitymon && docker compose build bot && docker compose up -d bot"
 
 # Logs
 docker logs gravitymon-bot --tail 50
@@ -71,7 +71,7 @@ All timestamps use **UTC+7**. DB stores UTC, converted for display.
 ## Test Commands
 ```bash
 # Send test data
-curl -X POST http://193.233.204.221:8080/api/v1/webhook \
+curl -X POST http://213.139.210.66:8080/api/v1/webhook \
   -H "Content-Type: application/json" \
   -d '{"name":"708_1_SG","ID":"0081a7","temperature":20.5,"temp_units":"C","gravity":1.025,"battery":3.89,"RSSI":-65,"interval":900}'
 
