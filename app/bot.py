@@ -14,8 +14,9 @@ import graphs
 import scheduler
 from excel_export import get_device_excel_path
 from handlers.keyboards import (
-    MenuCallback, GraphCallback, DeviceCallback,
-    get_main_keyboard, get_graph_keyboard, get_devices_keyboard
+    MenuCallback, GraphCallback, DeviceCallback, AdminCallback,
+    get_main_keyboard, get_graph_keyboard, get_devices_keyboard,
+    get_admin_keyboard
 )
 
 # Configure logging
@@ -73,6 +74,11 @@ class GraphStates(StatesGroup):
     """FSM states for custom date range input."""
     waiting_for_start_date = State()
     waiting_for_end_date = State()
+
+
+class AdminStates(StatesGroup):
+    """FSM states for admin user management."""
+    waiting_for_user_id = State()
 
 
 def format_time_ago(timestamp) -> str:
@@ -163,7 +169,9 @@ async def cmd_start(message: Message):
         await message.answer(
             text,
             parse_mode=ParseMode.HTML,
-            reply_markup=get_main_keyboard()
+            reply_markup=get_main_keyboard(
+                is_admin=message.from_user.id == settings.master_admin
+            )
         )
     else:
         await message.answer(
@@ -212,7 +220,9 @@ async def cmd_status(message: Message):
         await message.answer(
             text,
             parse_mode=ParseMode.HTML,
-            reply_markup=get_main_keyboard()
+            reply_markup=get_main_keyboard(
+                is_admin=message.from_user.id == settings.master_admin
+            )
         )
     else:
         await message.answer(
@@ -339,6 +349,122 @@ async def cmd_rmuser(message: Message):
         )
 
 
+# ==================== Admin Panel (inline buttons) ====================
+
+async def _resolve_users() -> list[dict]:
+    """Resolve allowed user IDs to name/username via Telegram API."""
+    user_ids = await database.get_allowed_users()
+    result = []
+    for uid in user_ids:
+        try:
+            chat = await bot.get_chat(uid)
+            result.append({
+                "chat_id": uid,
+                "name": chat.full_name or str(uid),
+                "username": chat.username or "",
+            })
+        except Exception:
+            result.append({"chat_id": uid, "name": str(uid), "username": ""})
+    return result
+
+
+async def _send_admin_panel(chat_id: int):
+    """Build and send the admin panel message."""
+    users = await _resolve_users()
+    count = len(users)
+    await bot.send_message(
+        chat_id=chat_id,
+        text=f"⚙️ <b>Управление пользователями ({count})</b>",
+        parse_mode=ParseMode.HTML,
+        reply_markup=get_admin_keyboard(users, settings.master_admin),
+    )
+
+
+@router.callback_query(MenuCallback.filter(F.action == "admin"))
+async def callback_admin_menu(callback: CallbackQuery):
+    """Open admin panel."""
+    if callback.from_user.id != settings.master_admin:
+        await callback.answer("⛔ Доступ запрещён", show_alert=True)
+        return
+
+    chat_id = callback.message.chat.id
+    await callback.message.delete()
+    await _send_admin_panel(chat_id)
+    await callback.answer()
+
+
+@router.callback_query(AdminCallback.filter(F.action == "info"))
+async def callback_admin_info(callback: CallbackQuery, callback_data: AdminCallback):
+    """Show user ID on tap."""
+    await callback.answer(f"ID: {callback_data.chat_id}")
+
+
+@router.callback_query(AdminCallback.filter(F.action == "remove"))
+async def callback_admin_remove(callback: CallbackQuery, callback_data: AdminCallback):
+    """Remove user via admin panel."""
+    if callback.from_user.id != settings.master_admin:
+        await callback.answer("⛔", show_alert=True)
+        return
+
+    if callback_data.chat_id == settings.master_admin:
+        await callback.answer("⛔ Нельзя удалить master admin", show_alert=True)
+        return
+
+    await database.remove_allowed_user(callback_data.chat_id)
+    await reload_allowed_users()
+
+    # Refresh admin panel
+    chat_id = callback.message.chat.id
+    await callback.message.delete()
+    await _send_admin_panel(chat_id)
+    await callback.answer(f"✅ Удалён {callback_data.chat_id}")
+
+
+@router.callback_query(AdminCallback.filter(F.action == "add"))
+async def callback_admin_add(callback: CallbackQuery, state: FSMContext):
+    """Start add-user flow."""
+    if callback.from_user.id != settings.master_admin:
+        await callback.answer("⛔", show_alert=True)
+        return
+
+    chat_id = callback.message.chat.id
+    await callback.message.delete()
+    await bot.send_message(
+        chat_id=chat_id,
+        text="➕ <b>Введите chat_id пользователя:</b>",
+        parse_mode=ParseMode.HTML,
+    )
+    await state.set_state(AdminStates.waiting_for_user_id)
+    await callback.answer()
+
+
+@router.message(AdminStates.waiting_for_user_id)
+async def process_admin_add_user(message: Message, state: FSMContext):
+    """Process user ID input from admin add flow."""
+    if not message.text or not message.text.strip().isdigit():
+        await message.answer("❌ Введите числовой chat_id")
+        return
+
+    chat_id = int(message.text.strip())
+    added = await database.add_allowed_user(chat_id)
+    await reload_allowed_users()
+    await state.clear()
+
+    if added:
+        await message.answer(
+            f"✅ Пользователь <code>{chat_id}</code> добавлен",
+            parse_mode=ParseMode.HTML,
+        )
+    else:
+        await message.answer(
+            f"ℹ️ Пользователь <code>{chat_id}</code> уже в списке",
+            parse_mode=ParseMode.HTML,
+        )
+
+    # Show updated admin panel
+    await _send_admin_panel(message.chat.id)
+
+
 @router.callback_query(MenuCallback.filter(F.action == "status"))
 @router.callback_query(MenuCallback.filter(F.action == "refresh"))
 async def callback_status(callback: CallbackQuery):
@@ -355,7 +481,9 @@ async def callback_status(callback: CallbackQuery):
             chat_id=chat_id,
             text=text,
             parse_mode=ParseMode.HTML,
-            reply_markup=get_main_keyboard()
+            reply_markup=get_main_keyboard(
+                is_admin=callback.from_user.id == settings.master_admin
+            )
         )
         await callback.answer()
     else:
@@ -450,7 +578,9 @@ async def callback_select_device(callback: CallbackQuery, callback_data: DeviceC
             chat_id=chat_id,
             text=text,
             parse_mode=ParseMode.HTML,
-            reply_markup=get_main_keyboard()
+            reply_markup=get_main_keyboard(
+                is_admin=callback.from_user.id == settings.master_admin
+            )
         )
 
 
@@ -780,7 +910,9 @@ async def callback_back_to_status(callback: CallbackQuery):
             chat_id=chat_id,
             text=text,
             parse_mode=ParseMode.HTML,
-            reply_markup=get_main_keyboard()
+            reply_markup=get_main_keyboard(
+                is_admin=callback.from_user.id == settings.master_admin
+            )
         )
     await callback.answer()
 

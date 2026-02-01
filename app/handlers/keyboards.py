@@ -18,9 +18,14 @@ class DeviceCallback(CallbackData, prefix="device"):
     device_id: str = ""
 
 
-def get_main_keyboard() -> InlineKeyboardMarkup:
+class AdminCallback(CallbackData, prefix="admin"):
+    action: str  # "remove", "add", "info"
+    chat_id: int = 0
+
+
+def get_main_keyboard(is_admin: bool = False) -> InlineKeyboardMarkup:
     """Main menu keyboard after status display."""
-    return InlineKeyboardMarkup(inline_keyboard=[
+    rows = [
         [
             InlineKeyboardButton(
                 text="📈 Графики",
@@ -41,7 +46,15 @@ def get_main_keyboard() -> InlineKeyboardMarkup:
                 callback_data=MenuCallback(action="export").pack()
             )
         ]
-    ])
+    ]
+    if is_admin:
+        rows.append([
+            InlineKeyboardButton(
+                text="⚙️ Админ",
+                callback_data=MenuCallback(action="admin").pack()
+            )
+        ])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def get_graph_keyboard(
@@ -171,3 +184,58 @@ def get_devices_keyboard(devices: list, current_device_id: str = "") -> InlineKe
     ])
 
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_admin_keyboard(
+    users: list[dict],
+    master_admin_id: int = 0
+) -> InlineKeyboardMarkup:
+    """Admin panel keyboard with user list and management buttons.
+
+    users: list of {"chat_id": int, "name": str, "username": str}
+    """
+    rows = []
+    for user in users:
+        label = user["name"]
+        if user.get("username"):
+            label += f' @{user["username"]}'
+
+        if user["chat_id"] == master_admin_id:
+            rows.append([
+                InlineKeyboardButton(
+                    text=f"👑 {label}",
+                    callback_data=AdminCallback(
+                        action="info", chat_id=user["chat_id"]
+                    ).pack()
+                )
+            ])
+        else:
+            rows.append([
+                InlineKeyboardButton(
+                    text=f"👤 {label}",
+                    callback_data=AdminCallback(
+                        action="info", chat_id=user["chat_id"]
+                    ).pack()
+                ),
+                InlineKeyboardButton(
+                    text="❌",
+                    callback_data=AdminCallback(
+                        action="remove", chat_id=user["chat_id"]
+                    ).pack()
+                )
+            ])
+
+    rows.append([
+        InlineKeyboardButton(
+            text="➕ Добавить",
+            callback_data=AdminCallback(action="add").pack()
+        )
+    ])
+    rows.append([
+        InlineKeyboardButton(
+            text="◀️ Назад",
+            callback_data=MenuCallback(action="status").pack()
+        )
+    ])
+
+    return InlineKeyboardMarkup(inline_keyboard=rows)
