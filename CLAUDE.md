@@ -8,12 +8,15 @@
 
 ## Architecture
 ```
-ESP (HTTP POST) → Nginx:8080 → FastAPI:5000 → SQLite
-                                    ↓
-                              Telegram Bot (polling)
-                                    ↓
-                              APScheduler (daily reports)
+ESP (HTTP POST) → Host Nginx:8080 → FastAPI:5000 (Docker) → SQLite
+                                          ↓
+                                    Telegram Bot (Docker, polling)
+                                          ↓
+                                    APScheduler (daily reports)
 ```
+- **Host nginx** config: `/etc/nginx/sites-available/gravitymon`
+- **Docker containers:** `gravitymon-api` (port 127.0.0.1:5000), `gravitymon-bot`
+- **Firewall:** UFW allows port 8080/tcp
 
 ## Key Files
 | File | Purpose |
@@ -113,6 +116,11 @@ asyncio.run(test())"
 - See `ESP_CONFIGURATION.md` for full instructions
 
 ## Recent Changes (2026-02-01)
+
+### Infrastructure
+- Removed Docker nginx container, proxy through host nginx instead (saves ~60 MB image + 1 container)
+- Host nginx on port 8080 proxies to FastAPI on 127.0.0.1:5000
+- Added UFW rule for port 8080/tcp
 
 ### Features
 - Master admin role (`MASTER_ADMIN` env var) with dynamic whitelist management
