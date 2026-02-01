@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     # Optional API token for webhook auth
     api_token: str = ""
 
+    # Comma-separated Telegram chat_ids allowed to use the bot (empty = allow all)
+    allowed_users: str = ""
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

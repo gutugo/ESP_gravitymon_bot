@@ -1,8 +1,8 @@
 import asyncio
 import logging
 from datetime import datetime, timezone, timedelta
-from aiogram import Bot, Dispatcher, Router, F
-from aiogram.types import Message, CallbackQuery, BufferedInputFile, FSInputFile
+from aiogram import Bot, Dispatcher, Router, F, BaseMiddleware
+from aiogram.types import Message, CallbackQuery, BufferedInputFile, FSInputFile, TelegramObject
 from aiogram.filters import Command
 from aiogram.enums import ParseMode
 from aiogram.fsm.context import FSMContext
@@ -25,10 +25,35 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Parse allowed users list
+allowed_users: list[int] = [
+    int(uid.strip()) for uid in settings.allowed_users.split(",") if uid.strip()
+]
+
+
+class AuthMiddleware(BaseMiddleware):
+    """Reject messages from users not in the allowed list."""
+
+    async def __call__(self, handler, event: TelegramObject, data: dict):
+        if not allowed_users:
+            return await handler(event, data)
+
+        user = data.get("event_from_user")
+        if user and user.id not in allowed_users:
+            if isinstance(event, Message):
+                await event.answer("⛔ Доступ запрещён")
+            elif isinstance(event, CallbackQuery):
+                await event.answer("⛔ Доступ запрещён", show_alert=True)
+            return
+        return await handler(event, data)
+
+
 # Initialize bot and dispatcher
 bot = Bot(token=settings.telegram_bot_token)
 dp = Dispatcher()
 router = Router()
+router.message.middleware(AuthMiddleware())
+router.callback_query.middleware(AuthMiddleware())
 
 # Store user's selected device (in-memory, could be moved to DB)
 user_devices: dict[int, str] = {}
