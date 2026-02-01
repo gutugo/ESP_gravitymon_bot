@@ -25,26 +25,33 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Parse allowed users list
-allowed_users: list[int] = [
-    int(uid.strip()) for uid in settings.allowed_users.split(",") if uid.strip()
-]
+# Cached allowed users list (loaded from DB on startup, refreshed on add/remove)
+allowed_users: list[int] = []
+
+
+async def reload_allowed_users():
+    """Reload allowed users list from DB into module-level cache."""
+    global allowed_users
+    allowed_users = await database.get_allowed_users()
 
 
 class AuthMiddleware(BaseMiddleware):
     """Reject messages from users not in the allowed list."""
 
     async def __call__(self, handler, event: TelegramObject, data: dict):
-        if not allowed_users:
+        if not allowed_users and not settings.master_admin:
             return await handler(event, data)
 
         user = data.get("event_from_user")
-        if user and user.id not in allowed_users:
-            if isinstance(event, Message):
-                await event.answer("⛔ Доступ запрещён")
-            elif isinstance(event, CallbackQuery):
-                await event.answer("⛔ Доступ запрещён", show_alert=True)
-            return
+        if user:
+            if user.id == settings.master_admin:
+                return await handler(event, data)
+            if user.id not in allowed_users:
+                if isinstance(event, Message):
+                    await event.answer("⛔ Доступ запрещён")
+                elif isinstance(event, CallbackQuery):
+                    await event.answer("⛔ Доступ запрещён", show_alert=True)
+                return
         return await handler(event, data)
 
 
@@ -241,6 +248,95 @@ async def cmd_test_report(message: Message):
         await message.answer(report, parse_mode=ParseMode.HTML)
     else:
         await message.answer("Нет данных за последние 24 часа")
+
+
+# ==================== Admin Commands (master admin only) ====================
+
+@router.message(Command("users"))
+async def cmd_users(message: Message):
+    """List all allowed users (master admin only)."""
+    if message.from_user.id != settings.master_admin:
+        return
+
+    users = await database.get_allowed_users()
+    if users:
+        lines = [f"<code>{uid}</code>" for uid in users]
+        text = (
+            f"👥 <b>Разрешённые пользователи ({len(users)}):</b>\n"
+            + "\n".join(lines)
+        )
+    else:
+        text = "👥 <b>Список пользователей пуст</b>"
+
+    if settings.master_admin:
+        text += f"\n\n👑 Master admin: <code>{settings.master_admin}</code>"
+
+    await message.answer(text, parse_mode=ParseMode.HTML)
+
+
+@router.message(Command("adduser"))
+async def cmd_adduser(message: Message):
+    """Add user to whitelist (master admin only)."""
+    if message.from_user.id != settings.master_admin:
+        return
+
+    args = message.text.split(maxsplit=1)
+    if len(args) < 2 or not args[1].strip().isdigit():
+        await message.answer(
+            "Использование: <code>/adduser &lt;chat_id&gt;</code>",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    chat_id = int(args[1].strip())
+    added = await database.add_allowed_user(chat_id)
+    await reload_allowed_users()
+
+    if added:
+        await message.answer(
+            f"✅ Пользователь <code>{chat_id}</code> добавлен",
+            parse_mode=ParseMode.HTML,
+        )
+    else:
+        await message.answer(
+            f"ℹ️ Пользователь <code>{chat_id}</code> уже в списке",
+            parse_mode=ParseMode.HTML,
+        )
+
+
+@router.message(Command("rmuser"))
+async def cmd_rmuser(message: Message):
+    """Remove user from whitelist (master admin only)."""
+    if message.from_user.id != settings.master_admin:
+        return
+
+    args = message.text.split(maxsplit=1)
+    if len(args) < 2 or not args[1].strip().isdigit():
+        await message.answer(
+            "Использование: <code>/rmuser &lt;chat_id&gt;</code>",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    chat_id = int(args[1].strip())
+
+    if chat_id == settings.master_admin:
+        await message.answer("⛔ Нельзя удалить master admin")
+        return
+
+    removed = await database.remove_allowed_user(chat_id)
+    await reload_allowed_users()
+
+    if removed:
+        await message.answer(
+            f"✅ Пользователь <code>{chat_id}</code> удалён",
+            parse_mode=ParseMode.HTML,
+        )
+    else:
+        await message.answer(
+            f"ℹ️ Пользователь <code>{chat_id}</code> не найден в списке",
+            parse_mode=ParseMode.HTML,
+        )
 
 
 @router.callback_query(MenuCallback.filter(F.action == "status"))
@@ -694,6 +790,17 @@ async def main():
     # Initialize database
     await database.init_db()
     logger.info("Database initialized")
+
+    # Seed allowed users from env var if DB table is empty
+    env_users = [
+        int(uid.strip()) for uid in settings.allowed_users.split(",") if uid.strip()
+    ]
+    if env_users:
+        await database.seed_allowed_users(env_users)
+
+    # Load allowed users cache from DB
+    await reload_allowed_users()
+    logger.info(f"Loaded {len(allowed_users)} allowed users from DB")
 
     # Start scheduler for daily reports
     scheduler.start_scheduler()

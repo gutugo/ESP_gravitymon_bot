@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     # Comma-separated Telegram chat_ids allowed to use the bot (empty = allow all)
     allowed_users: str = ""
 
+    # Master admin user ID (can manage whitelist via bot commands)
+    master_admin: int = 0
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

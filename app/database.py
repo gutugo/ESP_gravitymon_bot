@@ -47,6 +47,12 @@ async def init_db():
                 alert_type TEXT NOT NULL,
                 sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
+
+            CREATE TABLE IF NOT EXISTS allowed_users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                chat_id INTEGER UNIQUE NOT NULL,
+                added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
         """)
         await db.commit()
 
@@ -422,3 +428,51 @@ async def get_all_readings_for_device(device_id: str) -> list[dict]:
         """, (device_id,))
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]
+
+
+# ==================== Allowed Users Functions ====================
+
+async def get_allowed_users() -> list[int]:
+    """Get all allowed user chat_ids."""
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        cursor = await db.execute("SELECT chat_id FROM allowed_users")
+        rows = await cursor.fetchall()
+        return [row[0] for row in rows]
+
+
+async def add_allowed_user(chat_id: int) -> bool:
+    """Add user to whitelist. Returns True if added, False if already exists."""
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        try:
+            await db.execute(
+                "INSERT INTO allowed_users (chat_id) VALUES (?)", (chat_id,)
+            )
+            await db.commit()
+            return True
+        except aiosqlite.IntegrityError:
+            return False
+
+
+async def remove_allowed_user(chat_id: int) -> bool:
+    """Remove user from whitelist. Returns True if removed, False if not found."""
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        cursor = await db.execute(
+            "DELETE FROM allowed_users WHERE chat_id = ?", (chat_id,)
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+
+
+async def seed_allowed_users(chat_ids: list[int]):
+    """Seed allowed_users table from env var if table is empty."""
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        cursor = await db.execute("SELECT COUNT(*) FROM allowed_users")
+        row = await cursor.fetchone()
+        if row[0] > 0:
+            return
+        for chat_id in chat_ids:
+            await db.execute(
+                "INSERT OR IGNORE INTO allowed_users (chat_id) VALUES (?)",
+                (chat_id,),
+            )
+        await db.commit()
