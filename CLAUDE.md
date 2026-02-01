@@ -124,6 +124,7 @@ asyncio.run(test())"
 - Removed Docker nginx container, proxy through host nginx instead (saves ~60 MB image + 1 container)
 - Host nginx on port 8080 proxies to FastAPI on 127.0.0.1:5000
 - Added UFW rule for port 8080/tcp
+- Cleaned up server: removed desktop snaps (Chromium, CUPS, GNOME, Mesa), cleared snap cache (disk 91% → 73%)
 
 ### Features
 - Master admin role (`MASTER_ADMIN` env var) with dynamic whitelist management
