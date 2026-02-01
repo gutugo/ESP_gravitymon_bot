@@ -67,11 +67,14 @@ ESP (HTTP POST) → Host Nginx:8080 → FastAPI:5000 (Docker) → SQLite
 ```bash
 # Git remotes: origin (GitHub), server (production)
 git push server main
-ssh root@213.139.210.66 "cd /opt/gravitymon && docker compose build bot && docker compose up -d bot"
+ssh root@213.139.210.66 "cd /opt/gravitymon && docker compose build && docker compose up -d"
 
 # Logs
-docker logs gravitymon-bot --tail 50
-docker logs gravitymon-api --tail 50
+ssh root@213.139.210.66 "docker logs gravitymon-bot --tail 50"
+ssh root@213.139.210.66 "docker logs gravitymon-api --tail 50"
+
+# Host nginx (not in Docker)
+ssh root@213.139.210.66 "nginx -t && systemctl reload nginx"
 ```
 
 ## Timezone
