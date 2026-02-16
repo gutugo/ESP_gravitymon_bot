@@ -118,6 +118,19 @@ asyncio.run(test())"
 - **Configuration** → **Push Targets** → **HTTP Post** → URL: `http://213.139.210.66:8080/api/v1/webhook`
 - See `ESP_CONFIGURATION.md` for full instructions
 
+## Security
+- **Never** commit tokens, passwords, or secrets to git
+- `.env` and `CLAUDE.md` are in `.gitignore` — sensitive data stays local
+- Bot token was leaked in orphaned GitHub commit `fc13007` (initial commit of `install.sh`) — token revoked and rotated on 2026-02-16
+- Old server password was in `.claude/settings.local.json` — cleaned up
+
+## Recent Changes (2026-02-16)
+
+### Security
+- Found and revoked leaked Telegram bot token from orphaned GitHub commit
+- Rotated bot token via BotFather, updated server and local `.env`
+- Cleaned old server password from `.claude/settings.local.json`
+
 ## Recent Changes (2026-02-01)
 
 ### Infrastructure
@@ -137,4 +150,4 @@ asyncio.run(test())"
 - Fixed double `callback.answer()` in `bot.py`
 - Fixed matplotlib locator singleton reuse in `graphs.py`
 - Custom date range for graphs, daily Excel export
-- GitHub repo security audit: no leaks found
+- GitHub repo security audit
