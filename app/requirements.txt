@@ -11,7 +11,6 @@ pydantic-settings>=2.0.0
 aiosqlite>=0.19.0
 
 # Data Processing & Visualization
-pandas>=2.0.0
 matplotlib>=3.8.0
 openpyxl>=3.1.0
 

@@ -1,7 +1,10 @@
+import logging
 import httpx
 import asyncio
 from config import settings
 import database
+
+logger = logging.getLogger(__name__)
 
 # Thresholds
 BATTERY_LOW = 3.3
@@ -19,7 +22,7 @@ async def send_telegram_message(chat_id: int, text: str):
                 "parse_mode": "HTML"
             })
         except Exception as e:
-            print(f"Failed to send message to {chat_id}: {e}")
+            logger.error(f"Failed to send message to {chat_id}: {e}")
 
 
 async def check_and_send_alerts(device_id: str, device_name: str, battery: float):
@@ -49,17 +52,17 @@ async def check_and_send_alerts(device_id: str, device_name: str, battery: float
 
     # Check if we should send (cooldown)
     if not await database.should_send_alert(device_id, alert_type, cooldown_hours=6):
-        print(f"Alert {alert_type} for {device_id} skipped (cooldown)")
+        logger.info(f"Alert {alert_type} for {device_id} skipped (cooldown)")
         return
 
     # Get all subscribers
     subscribers = await database.get_all_subscribers()
     if not subscribers:
-        print("No subscribers to notify")
+        logger.info("No subscribers to notify")
         return
 
     # Send to all subscribers
-    print(f"Sending {alert_type} alert to {len(subscribers)} subscribers")
+    logger.info(f"Sending {alert_type} alert to {len(subscribers)} subscribers")
     for chat_id in subscribers:
         await send_telegram_message(chat_id, message)
 

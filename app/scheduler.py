@@ -1,4 +1,5 @@
 import logging
+from typing import Optional
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -10,7 +11,7 @@ from excel_export import generate_device_excel
 
 logger = logging.getLogger(__name__)
 
-scheduler: AsyncIOScheduler = None
+scheduler: Optional[AsyncIOScheduler] = None
 
 
 async def send_daily_reports():
@@ -51,6 +52,9 @@ async def send_daily_reports():
                     logger.error(f"Failed to send report to {chat_id}: {e}")
 
         logger.info("Daily report generation completed")
+
+        # Clean up old alert records
+        await database.cleanup_old_alerts(days=30)
 
         # Generate Excel exports for each device
         logger.info("Generating Excel exports...")

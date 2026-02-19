@@ -1,6 +1,6 @@
 import os
 from datetime import timezone, timedelta
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # UTC+7 timezone (e.g., Bangkok, Jakarta, Novosibirsk)
 TZ_UTC7 = timezone(timedelta(hours=7))
@@ -26,9 +26,7 @@ class Settings(BaseSettings):
     # Master admin user ID (can manage whitelist via bot commands)
     master_admin: int = 0
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 
 settings = Settings()

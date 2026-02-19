@@ -153,8 +153,6 @@ def format_status_message(reading: dict) -> str:
 @router.message(Command("start", "help"))
 async def cmd_start(message: Message):
     """Handle /start and /help commands."""
-    await database.init_db()
-
     # Auto-subscribe user on start
     await database.subscribe(message.from_user.id)
 

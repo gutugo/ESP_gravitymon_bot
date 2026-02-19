@@ -9,6 +9,8 @@ DATABASE_URL = settings.database_url
 async def init_db():
     """Initialize database with schema."""
     async with aiosqlite.connect(DATABASE_URL) as db:
+        # Enable WAL mode for better concurrent read/write support
+        await db.execute("PRAGMA journal_mode=WAL")
         await db.executescript("""
             CREATE TABLE IF NOT EXISTS devices (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -327,7 +329,7 @@ async def get_first_reading_24h(device_id: str, start_time: Optional[datetime] =
         if end_time:
             end_str = end_time.strftime('%Y-%m-%d %H:%M:%S')
             cursor = await db.execute("""
-                SELECT gravity, temperature, battery, timestamp
+                SELECT gravity, temperature, battery, timestamp, interval_sec
                 FROM readings
                 WHERE device_id = ? AND timestamp >= ? AND timestamp < ?
                 ORDER BY timestamp ASC
@@ -335,7 +337,7 @@ async def get_first_reading_24h(device_id: str, start_time: Optional[datetime] =
             """, (device_id, start_str, end_str))
         else:
             cursor = await db.execute("""
-                SELECT gravity, temperature, battery, timestamp
+                SELECT gravity, temperature, battery, timestamp, interval_sec
                 FROM readings
                 WHERE device_id = ? AND timestamp >= ?
                 ORDER BY timestamp ASC
@@ -475,4 +477,12 @@ async def seed_allowed_users(chat_ids: list[int]):
                 "INSERT OR IGNORE INTO allowed_users (chat_id) VALUES (?)",
                 (chat_id,),
             )
+        await db.commit()
+
+
+async def cleanup_old_alerts(days: int = 30):
+    """Delete alert records older than the specified number of days."""
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime('%Y-%m-%d %H:%M:%S')
+        await db.execute("DELETE FROM alerts_sent WHERE sent_at < ?", (cutoff,))
         await db.commit()
