@@ -432,6 +432,20 @@ async def get_all_readings_for_device(device_id: str) -> list[dict]:
         return [dict(row) for row in rows]
 
 
+async def get_readings_for_device_period(device_id: str, start_utc: datetime, end_utc: datetime) -> list[dict]:
+    """Get readings for a device within a UTC time range (for Excel incremental update)."""
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("""
+            SELECT timestamp, temperature, temp_unit, gravity, battery, rssi, angle, interval_sec
+            FROM readings
+            WHERE device_id = ? AND timestamp >= ? AND timestamp < ?
+            ORDER BY timestamp ASC
+        """, (device_id, start_utc.strftime('%Y-%m-%d %H:%M:%S'), end_utc.strftime('%Y-%m-%d %H:%M:%S')))
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
+
 # ==================== Allowed Users Functions ====================
 
 async def get_allowed_users() -> list[int]:

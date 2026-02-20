@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -7,7 +8,7 @@ import database
 from daily_report import generate_daily_report
 from alerts import send_telegram_message
 from config import TZ_UTC7
-from excel_export import generate_device_excel
+from excel_export import update_device_excel
 
 logger = logging.getLogger(__name__)
 
@@ -56,17 +57,27 @@ async def send_daily_reports():
         # Clean up old alert records
         await database.cleanup_old_alerts(days=30)
 
-        # Generate Excel exports for each device
-        logger.info("Generating Excel exports...")
+        # Update Excel exports with yesterday's data
+        now_utc7 = datetime.now(TZ_UTC7)
+        yesterday_utc7 = now_utc7 - timedelta(days=1)
+        day_start_utc7 = yesterday_utc7.replace(hour=0, minute=0, second=0, microsecond=0)
+        day_end_utc7 = day_start_utc7 + timedelta(days=1)
+        day_start_utc = day_start_utc7.astimezone(timezone.utc)
+        day_end_utc = day_end_utc7.astimezone(timezone.utc)
+
+        logger.info("Updating Excel exports with yesterday's data...")
         for device in devices:
             try:
-                filepath = await generate_device_excel(device['device_id'], device['name'])
+                filepath = await update_device_excel(
+                    device['device_id'], device['name'],
+                    day_start_utc, day_end_utc
+                )
                 if filepath:
-                    logger.info(f"Excel export generated for {device['name']}")
+                    logger.info(f"Excel updated for {device['name']}")
                 else:
                     logger.warning(f"No data for Excel export: {device['name']}")
             except Exception as e:
-                logger.error(f"Failed to generate Excel for {device['name']}: {e}")
+                logger.error(f"Failed to update Excel for {device['name']}: {e}")
 
     except Exception as e:
         logger.error(f"Error in daily report job: {e}")
