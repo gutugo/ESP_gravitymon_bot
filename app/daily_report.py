@@ -104,10 +104,8 @@ async def generate_daily_report(device_id: str, device_name: str) -> Optional[st
         signal_text = "н/д"
 
     # Calculate data completeness and missed packets
-    # Get interval from first reading of the period
-    interval = first_reading.get('interval_sec') if first_reading else 900
-    if not interval:
-        interval = 900
+    # Get interval from device settings (updated on each webhook POST)
+    interval = await database.get_device_interval(device_id)
     expected = database.get_expected_readings_count(interval)
     actual = stats['reading_count']
     missed = max(0, expected - actual)

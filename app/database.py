@@ -17,7 +17,8 @@ async def init_db():
                 device_id TEXT UNIQUE NOT NULL,
                 name TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                last_seen TIMESTAMP
+                last_seen TIMESTAMP,
+                interval_sec INTEGER DEFAULT 900
             );
 
             CREATE TABLE IF NOT EXISTS readings (
@@ -56,19 +57,26 @@ async def init_db():
                 added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
+        # Migration: add interval_sec column to devices if missing
+        cursor = await db.execute("PRAGMA table_info(devices)")
+        columns = [row[1] for row in await cursor.fetchall()]
+        if 'interval_sec' not in columns:
+            await db.execute("ALTER TABLE devices ADD COLUMN interval_sec INTEGER DEFAULT 900")
+
         await db.commit()
 
 
-async def upsert_device(device_id: str, name: str):
+async def upsert_device(device_id: str, name: str, interval_sec: Optional[int] = None):
     """Insert or update device."""
     async with aiosqlite.connect(DATABASE_URL) as db:
         await db.execute("""
-            INSERT INTO devices (device_id, name, last_seen)
-            VALUES (?, ?, CURRENT_TIMESTAMP)
+            INSERT INTO devices (device_id, name, last_seen, interval_sec)
+            VALUES (?, ?, CURRENT_TIMESTAMP, ?)
             ON CONFLICT(device_id) DO UPDATE SET
                 name = excluded.name,
-                last_seen = CURRENT_TIMESTAMP
-        """, (device_id, name))
+                last_seen = CURRENT_TIMESTAMP,
+                interval_sec = COALESCE(excluded.interval_sec, devices.interval_sec)
+        """, (device_id, name, interval_sec))
         await db.commit()
 
 
@@ -192,13 +200,23 @@ async def get_default_device():
     async with aiosqlite.connect(DATABASE_URL) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute("""
-            SELECT device_id, name
+            SELECT device_id, name, interval_sec
             FROM devices
             ORDER BY last_seen DESC
             LIMIT 1
         """)
         row = await cursor.fetchone()
         return dict(row) if row else None
+
+
+async def get_device_interval(device_id: str) -> int:
+    """Get the device's configured interval in seconds."""
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        cursor = await db.execute(
+            "SELECT interval_sec FROM devices WHERE device_id = ?", (device_id,)
+        )
+        row = await cursor.fetchone()
+        return row[0] if row and row[0] else 900
 
 
 async def subscribe(chat_id: int):

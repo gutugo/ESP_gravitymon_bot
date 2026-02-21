@@ -95,10 +95,11 @@ async def receive_data(
             raise HTTPException(status_code=401, detail="Invalid token")
 
     try:
-        # Register/update device
+        # Register/update device (saves current interval from ESP)
         await database.upsert_device(
             device_id=payload.ID,
-            name=payload.name
+            name=payload.name,
+            interval_sec=payload.interval
         )
 
         # Store reading
