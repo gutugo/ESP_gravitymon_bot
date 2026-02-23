@@ -104,10 +104,15 @@ async def generate_daily_report(device_id: str, device_name: str) -> Optional[st
         signal_text = "н/д"
 
     # Calculate data completeness and missed packets
-    # Get interval from device settings (updated on each webhook POST)
-    interval = await database.get_device_interval(device_id)
-    expected = database.get_expected_readings_count(interval)
+    # Use actual average interval from readings for accurate expected count
     actual = stats['reading_count']
+    avg_interval = await database.get_avg_interval(device_id, day_start_utc, day_end_utc)
+    if avg_interval and avg_interval > 0:
+        interval = int(avg_interval)
+        expected = database.get_expected_readings_count(interval)
+    else:
+        interval = await database.get_device_interval(device_id)
+        expected = database.get_expected_readings_count(interval)
     missed = max(0, expected - actual)
     missed_icon = "✓" if missed == 0 else "⚠️"
 

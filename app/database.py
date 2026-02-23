@@ -431,7 +431,24 @@ async def get_alerts_24h(device_id: str, start_time: Optional[datetime] = None, 
 
 def get_expected_readings_count(interval_sec: int = 900) -> int:
     """Calculate expected number of readings in 24h based on interval."""
-    return int(24 * 60 * 60 / interval_sec)
+    return round(24 * 60 * 60 / interval_sec)
+
+
+async def get_avg_interval(device_id: str, start_time: datetime, end_time: datetime) -> Optional[float]:
+    """Calculate average interval between readings in a period (seconds)."""
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        cursor = await db.execute("""
+            SELECT timestamp FROM readings
+            WHERE device_id = ? AND timestamp >= ? AND timestamp < ?
+            ORDER BY timestamp ASC
+        """, (device_id, start_time.strftime('%Y-%m-%d %H:%M:%S'),
+              end_time.strftime('%Y-%m-%d %H:%M:%S')))
+        rows = await cursor.fetchall()
+        if len(rows) < 2:
+            return None
+        first = datetime.fromisoformat(rows[0][0])
+        last = datetime.fromisoformat(rows[-1][0])
+        return (last - first).total_seconds() / (len(rows) - 1)
 
 
 # ==================== Excel Export Functions ====================
