@@ -127,6 +127,15 @@ async def receive_data(
         )
         task.add_done_callback(handle_task_exception)
 
+        # Check if device was offline and notify recovery
+        recovery_task = asyncio.create_task(
+            alerts.notify_device_back_online(
+                device_id=payload.ID,
+                device_name=payload.name
+            )
+        )
+        recovery_task.add_done_callback(handle_task_exception)
+
         return {
             "status": "ok",
             "device": payload.name,

@@ -3,10 +3,11 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 
 import database
 from daily_report import generate_daily_report
-from alerts import send_telegram_message
+from alerts import send_telegram_message, check_device_offline
 from config import TZ_UTC7
 from excel_export import update_device_excel
 
@@ -100,8 +101,17 @@ def start_scheduler():
         replace_existing=True
     )
 
+    # Device offline check every 15 minutes
+    scheduler.add_job(
+        check_device_offline,
+        trigger=IntervalTrigger(minutes=15),
+        id='device_offline_check',
+        name='Device Offline Check',
+        replace_existing=True
+    )
+
     scheduler.start()
-    logger.info("Scheduler started. Daily report scheduled at 08:00 UTC+7")
+    logger.info("Scheduler started. Daily report at 08:00 UTC+7, offline check every 15 min")
 
     return scheduler
 

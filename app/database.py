@@ -187,7 +187,7 @@ async def get_all_devices():
     async with aiosqlite.connect(DATABASE_URL) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute("""
-            SELECT device_id, name, last_seen
+            SELECT device_id, name, last_seen, interval_sec
             FROM devices
             ORDER BY last_seen DESC
         """)
@@ -527,6 +527,22 @@ async def seed_allowed_users(chat_ids: list[int]):
                 (chat_id,),
             )
         await db.commit()
+
+
+async def get_last_alert_age(device_id: str, alert_type: str) -> Optional[float]:
+    """Get seconds since the most recent alert of given type. Returns None if no alert found."""
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        cursor = await db.execute("""
+            SELECT sent_at FROM alerts_sent
+            WHERE device_id = ? AND alert_type = ?
+            ORDER BY sent_at DESC
+            LIMIT 1
+        """, (device_id, alert_type))
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        sent_at = datetime.fromisoformat(row[0]).replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - sent_at).total_seconds()
 
 
 async def cleanup_old_alerts(days: int = 30):
