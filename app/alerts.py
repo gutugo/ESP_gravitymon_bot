@@ -100,7 +100,8 @@ async def check_device_offline():
 
         last_seen = datetime.fromisoformat(last_seen_str).replace(tzinfo=timezone.utc)
         silence = (now - last_seen).total_seconds()
-        threshold = interval_sec * 2
+        # Expected interval + 2 min safety for WiFi reconnect / timing jitter
+        threshold = interval_sec + 120
 
         if silence <= threshold:
             logger.debug(f"Device {device_name} is online (last seen {_format_duration(silence)} ago)")
@@ -112,11 +113,13 @@ async def check_device_offline():
             logger.debug(f"Offline alert for {device_name} skipped (cooldown)")
             continue
 
+        missed = max(1, int(silence / interval_sec) - 1)
         expected_min = interval_sec // 60
         message = (
-            f"📡 <b>УСТРОЙСТВО НЕ ОТВЕЧАЕТ!</b>\n\n"
+            f"📡 <b>Пропущены показания!</b>\n\n"
             f"📱 {device_name}\n"
             f"⏱ Последний сигнал: <b>{_format_duration(silence)} назад</b>\n"
+            f"📊 Пропущено: <b>~{missed}</b> показаний\n"
             f"⚠️ Ожидался каждые {expected_min} мин"
         )
 
@@ -132,36 +135,3 @@ async def check_device_offline():
         await database.record_alert_sent(device_id, alert_type)
 
 
-async def notify_device_back_online(device_id: str, device_name: str):
-    """Send 'back online' notification if device was previously reported offline."""
-    # Check if a device_offline alert was sent recently (within 48h)
-    if await database.should_send_alert(device_id, "device_offline", cooldown_hours=48):
-        # No offline alert in the last 48h — nothing to recover from
-        return
-
-    # Check if we already sent a recovery notification (cooldown 1h to avoid duplicates)
-    if not await database.should_send_alert(device_id, "device_back_online", cooldown_hours=1):
-        return
-
-    # Calculate how long the device was offline using the last offline alert time
-    offline_duration = await database.get_last_alert_age(device_id, "device_offline")
-    if offline_duration is None:
-        return
-
-    duration_str = _format_duration(offline_duration)
-
-    message = (
-        f"✅ <b>Устройство снова на связи!</b>\n\n"
-        f"📱 {device_name}\n"
-        f"⏱ Было офлайн: <b>{duration_str}</b>"
-    )
-
-    subscribers = await database.get_all_subscribers()
-    if not subscribers:
-        return
-
-    logger.info(f"Device {device_name} back online after {duration_str}, notifying {len(subscribers)} subscribers")
-    for chat_id in subscribers:
-        await send_telegram_message(chat_id, message)
-
-    await database.record_alert_sent(device_id, "device_back_online")
