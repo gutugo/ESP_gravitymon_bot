@@ -12,18 +12,24 @@ BATTERY_LOW = 3.3
 BATTERY_CRITICAL = 3.1
 
 
-async def send_telegram_message(chat_id: int, text: str):
-    """Send a message via Telegram Bot API."""
+async def send_telegram_message(chat_id: int, text: str) -> bool:
+    """Send a message via Telegram Bot API. Returns False if user blocked the bot."""
     url = f"https://api.telegram.org/bot{settings.telegram_bot_token}/sendMessage"
     async with httpx.AsyncClient() as client:
         try:
-            await client.post(url, json={
+            resp = await client.post(url, json={
                 "chat_id": chat_id,
                 "text": text,
                 "parse_mode": "HTML"
             })
+            if resp.status_code == 403:
+                logger.warning(f"User {chat_id} blocked the bot, unsubscribing")
+                await database.unsubscribe(chat_id)
+                return False
+            return True
         except Exception as e:
             logger.error(f"Failed to send message to {chat_id}: {e}")
+            return False
 
 
 async def check_and_send_alerts(device_id: str, device_name: str, battery: float):
