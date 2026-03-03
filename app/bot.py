@@ -506,7 +506,7 @@ async def callback_graphs_menu(callback: CallbackQuery):
 @router.callback_query(MenuCallback.filter(F.action == "devices"))
 async def callback_devices_menu(callback: CallbackQuery):
     """Show devices list - delete and send new for single dashboard."""
-    devices = await database.get_all_devices()
+    devices = await database.get_all_devices(watched_only=False)
     current_device = user_devices.get(callback.from_user.id, "")
 
     if devices:
@@ -580,6 +580,36 @@ async def callback_select_device(callback: CallbackQuery, callback_data: DeviceC
                 is_admin=callback.from_user.id == settings.master_admin
             )
         )
+
+
+@router.callback_query(DeviceCallback.filter(F.action == "toggle_watch"))
+async def callback_toggle_watch(callback: CallbackQuery, callback_data: DeviceCallback):
+    """Toggle watched status for a device."""
+    device_id = callback_data.device_id
+
+    # Find current watched state
+    devices = await database.get_all_devices(watched_only=False)
+    device = next((d for d in devices if d['device_id'] == device_id), None)
+    if not device:
+        await callback.answer("Устройство не найдено", show_alert=True)
+        return
+
+    new_state = not bool(device.get('watched', 1))
+    await database.set_device_watched(device_id, new_state)
+
+    # Refresh devices keyboard
+    devices = await database.get_all_devices(watched_only=False)
+    current_device = user_devices.get(callback.from_user.id, "")
+    chat_id = callback.message.chat.id
+    await callback.message.delete()
+    await bot.send_message(
+        chat_id=chat_id,
+        text="📱 <b>Выберите устройство:</b>",
+        parse_mode=ParseMode.HTML,
+        reply_markup=get_devices_keyboard(devices, current_device)
+    )
+    status = "включено" if new_state else "отключено"
+    await callback.answer(f"Наблюдение {status} ✓")
 
 
 @router.callback_query(GraphCallback.filter(F.action == "period"))

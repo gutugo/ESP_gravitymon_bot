@@ -14,7 +14,7 @@ class GraphCallback(CallbackData, prefix="graph"):
 
 
 class DeviceCallback(CallbackData, prefix="device"):
-    action: str  # "select"
+    action: str  # "select", "toggle_watch"
     device_id: str = ""
 
 
@@ -159,17 +159,27 @@ def get_graph_keyboard(
 
 
 def get_devices_keyboard(devices: list, current_device_id: str = "") -> InlineKeyboardMarkup:
-    """Device selection keyboard."""
+    """Device selection keyboard with watch toggle."""
     buttons = []
     for device in devices:
+        watched = device.get('watched', 1)
         label = device['name']
         if device['device_id'] == current_device_id:
             label = f"• {label} •"
+        prefix = "📱" if watched else "🔇"
+        eye = "👁" if watched else "👁‍🗨"
         buttons.append([
             InlineKeyboardButton(
-                text=label,
+                text=f"{prefix} {label}",
                 callback_data=DeviceCallback(
                     action="select",
+                    device_id=device['device_id']
+                ).pack()
+            ),
+            InlineKeyboardButton(
+                text=eye,
+                callback_data=DeviceCallback(
+                    action="toggle_watch",
                     device_id=device['device_id']
                 ).pack()
             )

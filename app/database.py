@@ -62,6 +62,8 @@ async def init_db():
         columns = [row[1] for row in await cursor.fetchall()]
         if 'interval_sec' not in columns:
             await db.execute("ALTER TABLE devices ADD COLUMN interval_sec INTEGER DEFAULT 900")
+        if 'watched' not in columns:
+            await db.execute("ALTER TABLE devices ADD COLUMN watched INTEGER DEFAULT 1")
 
         await db.commit()
 
@@ -182,26 +184,35 @@ async def get_device_date_range(device_id: str) -> tuple[datetime, datetime] | N
         return None
 
 
-async def get_all_devices():
-    """Get all registered devices."""
+async def get_all_devices(watched_only: bool = True):
+    """Get all registered devices. Filter to watched-only by default."""
     async with aiosqlite.connect(DATABASE_URL) as db:
         db.row_factory = aiosqlite.Row
-        cursor = await db.execute("""
-            SELECT device_id, name, last_seen, interval_sec
-            FROM devices
-            ORDER BY last_seen DESC
-        """)
+        if watched_only:
+            cursor = await db.execute("""
+                SELECT device_id, name, last_seen, interval_sec, watched
+                FROM devices
+                WHERE watched = 1
+                ORDER BY last_seen DESC
+            """)
+        else:
+            cursor = await db.execute("""
+                SELECT device_id, name, last_seen, interval_sec, watched
+                FROM devices
+                ORDER BY last_seen DESC
+            """)
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]
 
 
 async def get_default_device():
-    """Get the most recently active device."""
+    """Get the most recently active watched device."""
     async with aiosqlite.connect(DATABASE_URL) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute("""
             SELECT device_id, name, interval_sec
             FROM devices
+            WHERE watched = 1
             ORDER BY last_seen DESC
             LIMIT 1
         """)
@@ -217,6 +228,16 @@ async def get_device_interval(device_id: str) -> int:
         )
         row = await cursor.fetchone()
         return row[0] if row and row[0] else 900
+
+
+async def set_device_watched(device_id: str, watched: bool):
+    """Toggle the watched flag for a device."""
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        await db.execute(
+            "UPDATE devices SET watched = ? WHERE device_id = ?",
+            (1 if watched else 0, device_id),
+        )
+        await db.commit()
 
 
 async def subscribe(chat_id: int):
