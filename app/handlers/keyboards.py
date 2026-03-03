@@ -167,7 +167,7 @@ def get_devices_keyboard(devices: list, current_device_id: str = "") -> InlineKe
         if device['device_id'] == current_device_id:
             label = f"• {label} •"
         prefix = "📱" if watched else "🔇"
-        eye = "👁" if watched else "👁‍🗨"
+        eye = "✅" if watched else "❌"
         buttons.append([
             InlineKeyboardButton(
                 text=f"{prefix} {label}",
