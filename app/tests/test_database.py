@@ -116,6 +116,33 @@ async def test_should_send_alert_cooldown(sample_device):
     assert await database.should_send_alert("abc123", "battery_low", cooldown_hours=6) is False
 
 
+async def test_claim_alert_slot_first_wins(sample_device):
+    # First claim succeeds, immediate second claim is blocked by cooldown.
+    assert await database.claim_alert_slot("abc123", "battery_low", cooldown_hours=6) is True
+    assert await database.claim_alert_slot("abc123", "battery_low", cooldown_hours=6) is False
+
+
+async def test_claim_alert_slot_records_once(sample_device):
+    # A blocked claim must not insert a second row.
+    await database.claim_alert_slot("abc123", "battery_low", cooldown_hours=6)
+    await database.claim_alert_slot("abc123", "battery_low", cooldown_hours=6)
+    async with aiosqlite.connect(database.DATABASE_URL) as db:
+        cursor = await db.execute(
+            "SELECT COUNT(*) FROM alerts_sent WHERE device_id='abc123' AND alert_type='battery_low'"
+        )
+        (count,) = await cursor.fetchone()
+    assert count == 1
+
+
+async def test_get_device_max_gravity(sample_reading):
+    await database.insert_reading(
+        device_id="abc123", temperature=20.0, temp_unit="C",
+        gravity=1.060, gravity_unit="G", battery=3.8,
+    )
+    assert await database.get_device_max_gravity("abc123") == 1.060
+    assert await database.get_device_max_gravity("nope") is None
+
+
 async def test_cleanup_old_alerts(sample_device):
     await database.record_alert_sent("abc123", "battery_low")
     # Manually backdate the alert

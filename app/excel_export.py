@@ -4,6 +4,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 import logging
 
+# Timestamps are written to column 1 in this format (UTC+7).
+_TS_FMT = '%Y-%m-%d %H:%M:%S'
+
 import database
 from config import TZ_UTC7
 
@@ -89,10 +92,35 @@ async def generate_device_excel(device_id: str, device_name: str) -> Path | None
     return filepath
 
 
-async def update_device_excel(device_id: str, device_name: str, start_utc: datetime, end_utc: datetime) -> Path | None:
-    """Append new readings from a period to the existing Excel file.
+def _existing_timestamps(ws) -> set:
+    """Collect the timestamp strings (column 1) already present in the sheet."""
+    stamps = set()
+    for (value,) in ws.iter_rows(min_row=2, max_col=1, values_only=True):
+        if value is not None:
+            stamps.add(str(value))
+    return stamps
 
-    If the file doesn't exist, creates it with all historical data.
+
+def _last_timestamp_utc(stamps: set) -> datetime | None:
+    """Parse the latest UTC+7 timestamp string back to an aware UTC datetime."""
+    if not stamps:
+        return None
+    try:
+        latest = max(stamps)  # ISO-like strings sort chronologically
+        return datetime.strptime(latest, _TS_FMT).replace(tzinfo=TZ_UTC7).astimezone(timezone.utc)
+    except ValueError:
+        return None
+
+
+async def update_device_excel(device_id: str, device_name: str, start_utc: datetime, end_utc: datetime) -> Path | None:
+    """Append new readings up to end_utc to the existing Excel file.
+
+    If the file doesn't exist, creates it with all historical data. Rows are
+    de-duplicated by timestamp against what's already in the sheet, so the overlap
+    between the initial full export and the first incremental append is not
+    double-counted, and a re-run for the same day is a no-op. The lower bound is
+    extended back to the last row already in the file, so a missed day (scheduler
+    didn't run) gets backfilled on the next run instead of leaving a gap.
     """
     EXPORT_DIR.mkdir(parents=True, exist_ok=True)
     filepath = _get_filepath(device_name)
@@ -101,24 +129,32 @@ async def update_device_excel(device_id: str, device_name: str, start_utc: datet
         logger.info(f"No existing Excel for {device_name}, generating full export")
         return await generate_device_excel(device_id, device_name)
 
-    new_readings = await database.get_readings_for_device_period(device_id, start_utc, end_utc)
-    if not new_readings:
-        logger.info(f"No new readings for {device_name} in period, Excel unchanged")
-        return filepath
-
     wb = openpyxl.load_workbook(filepath)
     ws = wb.active
 
+    existing = _existing_timestamps(ws)
+    # Backfill from wherever the file currently ends (covers missed days), but never
+    # later than the requested window start.
+    last_utc = _last_timestamp_utc(existing)
+    effective_start = min(start_utc, last_utc) if last_utc else start_utc
+
+    candidates = await database.get_readings_for_device_period(device_id, effective_start, end_utc)
+    new_rows = [row for r in candidates if (row := _reading_to_row(r))[0] not in existing]
+
+    if not new_rows:
+        logger.info(f"No new readings for {device_name} in period, Excel unchanged")
+        return filepath
+
     next_row = ws.max_row + 1
-    for reading in new_readings:
-        for col_idx, value in enumerate(_reading_to_row(reading), 1):
+    for row in new_rows:
+        for col_idx, value in enumerate(row, 1):
             ws.cell(row=next_row, column=col_idx, value=value)
         next_row += 1
 
     _auto_width(ws)
     wb.save(filepath)
 
-    logger.info(f"Excel updated for {device_name}: appended {len(new_readings)} rows (total {ws.max_row - 1})")
+    logger.info(f"Excel updated for {device_name}: appended {len(new_rows)} rows (total {ws.max_row - 1})")
     return filepath
 
 

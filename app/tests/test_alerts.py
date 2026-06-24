@@ -61,6 +61,17 @@ async def test_alert_no_subscribers(sample_device):
     mock_send.assert_not_called()
 
 
+async def test_alert_escapes_html_in_device_name(sample_device):
+    # A device name with HTML metacharacters must be escaped so Telegram's HTML
+    # parser doesn't reject (and silently drop) the message.
+    await database.subscribe(100)
+    with patch("alerts.send_telegram_message", new_callable=AsyncMock) as mock_send:
+        await check_and_send_alerts("abc123", "Tank <1> & <2>", battery=3.0)
+    text = mock_send.call_args[0][1]
+    assert "&lt;1&gt;" in text and "&amp;" in text
+    assert "<1>" not in text
+
+
 # ── check_device_offline ───────────────────────────────────────────
 
 async def test_offline_device_sends_alert(tmp_db):
