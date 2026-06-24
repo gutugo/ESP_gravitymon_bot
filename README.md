@@ -5,15 +5,18 @@ A Telegram bot for monitoring fermentation using ESP-based hydrometers (GravityM
 ## Features
 
 - **Real-time Monitoring** - View current temperature, gravity, and battery status
-- **Interactive Graphs** - Generate charts for different time periods (1h, 24h, 7d, 30d)
-- **Multi-device Support** - Monitor multiple ESP devices from one bot
-- **Push Notifications** - Alerts for low and critical battery levels
+- **Interactive Graphs** - Generate charts for fixed periods (1h, 24h, 7d, 30d) or a custom date range
+- **Multi-device Support** - Monitor multiple ESP devices from one bot, with a per-device **watched/unwatched** toggle to mute alerts/reports/exports for a device without deleting it
+- **Push Notifications** - Alerts for low/critical battery and for devices going **offline** (missed readings)
 - **Daily Reports** - Automated summary of 24h fermentation data with:
   - Temperature min/max/avg
   - Gravity changes and fermentation status
   - ABV estimation
   - Battery health
   - Signal quality and packet statistics
+- **Excel Export** - Per-device `.xlsx` of all readings, refreshed daily
+- **Access Control** - Master admin + dynamic user whitelist, managed via commands or an inline admin panel
+- **Optional Webhook Auth** - Require a bearer token on the ingest endpoint (see `API_TOKEN`)
 - **Russian Interface** - Bot messages in Russian language
 
 ## Architecture
@@ -51,6 +54,11 @@ cp .env.example .env
 ```env
 TELEGRAM_BOT_TOKEN=your_bot_token_here
 DATABASE_URL=gravitymon.db
+# Optional but recommended — require a bearer token on the webhook:
+API_TOKEN=
+# Access control:
+MASTER_ADMIN=your_telegram_user_id
+ALLOWED_USERS=id1,id2
 ```
 
 4. Start the services:
@@ -71,6 +79,9 @@ http://YOUR_SERVER_IP:8080/api/v1/webhook
 |----------|-------------|---------|
 | `TELEGRAM_BOT_TOKEN` | Bot token from BotFather | Required |
 | `DATABASE_URL` | SQLite database path | `gravitymon.db` |
+| `API_TOKEN` | If set, the webhook requires `Authorization: Bearer <API_TOKEN>` (empty = no auth) | _(empty)_ |
+| `MASTER_ADMIN` | Telegram user ID that can manage the whitelist | _(none)_ |
+| `ALLOWED_USERS` | Comma-separated user IDs seeded into the whitelist on first run (empty = allow all) | _(empty)_ |
 
 ### ESP Device Setup
 
@@ -79,9 +90,12 @@ Configure your GravityMon/iSpindel device with:
 ```json
 {
   "http_post_target": "http://YOUR_SERVER:8080/api/v1/webhook",
-  "http_post_header1": "Content-Type: application/json"
+  "http_post_header1": "Content-Type: application/json",
+  "http_post_header2": "Authorization: Bearer YOUR_API_TOKEN"
 }
 ```
+
+> `http_post_header2` is only needed if `API_TOKEN` is set on the server. Omit it otherwise.
 
 See [ESP_CONFIGURATION.md](ESP_CONFIGURATION.md) for detailed setup instructions.
 
@@ -96,6 +110,16 @@ See [ESP_CONFIGURATION.md](ESP_CONFIGURATION.md) for detailed setup instructions
 | `/subscribe` | Enable push notifications |
 | `/unsubscribe` | Disable push notifications |
 
+### Admin Commands (master admin only)
+
+| Command | Description |
+|---------|-------------|
+| `/users` | List whitelisted user IDs |
+| `/adduser <id>` | Add a user to the whitelist |
+| `/rmuser <id>` | Remove a user (master admin cannot be removed) |
+
+Devices, Excel export, and the user-management panel are also reachable via inline buttons under the status dashboard.
+
 ## API Endpoints
 
 ### Webhook Endpoint
@@ -103,7 +127,10 @@ See [ESP_CONFIGURATION.md](ESP_CONFIGURATION.md) for detailed setup instructions
 ```
 POST /api/v1/webhook
 Content-Type: application/json
+Authorization: Bearer <API_TOKEN>   # only when API_TOKEN is set on the server
 ```
+
+Returns **401** if `API_TOKEN` is set and the header is missing or wrong.
 
 **Request body:**
 ```json
@@ -134,7 +161,10 @@ The bot sends notifications when battery voltage drops below thresholds:
 | Low | ≤ 3.3V | Warning notification |
 | Critical | ≤ 3.1V | Urgent notification |
 
-Alerts have a 6-hour cooldown to prevent spam.
+It also sends a **device-offline** alert when a watched device misses its
+expected reporting interval (checked every 15 min). All alert types share a
+6-hour cooldown per device to prevent spam, and only **watched** devices
+generate alerts.
 
 ## Daily Reports
 
