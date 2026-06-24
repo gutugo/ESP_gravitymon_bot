@@ -1,5 +1,8 @@
 import asyncio
+import html
 import logging
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from datetime import datetime, timezone, timedelta
 from aiogram import Bot, Dispatcher, Router, F, BaseMiddleware
 from aiogram.types import Message, CallbackQuery, BufferedInputFile, FSInputFile, TelegramObject
@@ -28,6 +31,11 @@ logger = logging.getLogger(__name__)
 
 # Cached allowed users list (loaded from DB on startup, refreshed on add/remove)
 allowed_users: list[int] = []
+
+# Matplotlib uses global (pyplot) state and is CPU-bound, so render graphs off the
+# event loop on a single worker thread — keeps the bot responsive (polling, other
+# users) while a chart is drawn, and serializes renders so pyplot stays safe.
+_graph_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="graph")
 
 
 async def reload_allowed_users():
@@ -116,7 +124,7 @@ BATTERY_CRITICAL = 3.1  # Critical battery warning
 
 def format_status_message(reading: dict) -> str:
     """Format status message in Russian."""
-    device_name = reading.get('device_name', reading.get('name', 'Устройство'))
+    device_name = html.escape(reading.get('device_name', reading.get('name', 'Устройство')))
     temp = reading.get('temperature', 0)
     temp_unit = reading.get('temp_unit', 'C')
     gravity = reading.get('gravity', 0)
@@ -891,15 +899,20 @@ async def callback_generate_graph(callback: CallbackQuery, callback_data: GraphC
     device = await database.get_latest_reading(device_id)
     device_name = device.get('device_name', 'Устройство') if device else 'Устройство'
 
-    # Generate graph
-    graph_buffer = graphs.generate_graph(
-        readings=readings,
-        device_name=device_name,
-        period=callback_data.period,
-        show_temperature=callback_data.show_temp,
-        show_gravity=callback_data.show_gravity,
-        start_date=start_date,
-        end_date=end_date
+    # Generate graph off the event loop (matplotlib is blocking + CPU-bound)
+    loop = asyncio.get_running_loop()
+    graph_buffer = await loop.run_in_executor(
+        _graph_executor,
+        partial(
+            graphs.generate_graph,
+            readings=readings,
+            device_name=device_name,
+            period=callback_data.period,
+            show_temperature=callback_data.show_temp,
+            show_gravity=callback_data.show_gravity,
+            start_date=start_date,
+            end_date=end_date,
+        ),
     )
 
     # Send photo (delete old message first to keep single dashboard)

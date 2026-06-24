@@ -110,6 +110,7 @@ async def test_generate_daily_report_happy_path():
         patch("daily_report.database.get_alerts_24h", AsyncMock(return_value=[])),
         patch("daily_report.database.get_avg_interval", AsyncMock(return_value=900.0)),
         patch("daily_report.database.get_device_interval", AsyncMock(return_value=900)),
+        patch("daily_report.database.get_device_max_gravity", AsyncMock(return_value=1.050)),
     ):
         report = await generate_daily_report("abc123", "TestDevice")
 

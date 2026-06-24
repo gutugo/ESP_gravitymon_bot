@@ -1,3 +1,4 @@
+import html
 import logging
 import httpx
 import asyncio
@@ -26,6 +27,12 @@ async def send_telegram_message(chat_id: int, text: str) -> bool:
                 logger.warning(f"User {chat_id} blocked the bot, unsubscribing")
                 await database.unsubscribe(chat_id)
                 return False
+            if resp.status_code != 200:
+                # 400 (bad HTML/markup), 429 (rate limit), 5xx, etc. — never silently drop
+                logger.error(
+                    f"Telegram API error {resp.status_code} sending to {chat_id}: {resp.text}"
+                )
+                return False
             return True
         except Exception as e:
             logger.error(f"Failed to send message to {chat_id}: {e}")
@@ -35,12 +42,14 @@ async def send_telegram_message(chat_id: int, text: str) -> bool:
 async def check_and_send_alerts(device_id: str, device_name: str, battery: float):
     """Check conditions and send alerts to all subscribers."""
 
+    safe_name = html.escape(device_name)
+
     # Check battery level
     if battery <= BATTERY_CRITICAL:
         alert_type = "battery_critical"
         message = (
             f"🚨 <b>КРИТИЧЕСКОЕ ПРЕДУПРЕЖДЕНИЕ!</b>\n\n"
-            f"Устройство: <b>{device_name}</b>\n"
+            f"Устройство: <b>{safe_name}</b>\n"
             f"🪫 Батарея: <b>{battery:.2f}V</b>\n\n"
             f"⚠️ Батарея критически разряжена!\n"
             f"Срочно зарядите устройство!"
@@ -49,7 +58,7 @@ async def check_and_send_alerts(device_id: str, device_name: str, battery: float
         alert_type = "battery_low"
         message = (
             f"⚠️ <b>Предупреждение</b>\n\n"
-            f"Устройство: <b>{device_name}</b>\n"
+            f"Устройство: <b>{safe_name}</b>\n"
             f"🪫 Батарея: <b>{battery:.2f}V</b>\n\n"
             f"Низкий заряд батареи.\n"
             f"Рекомендуется зарядить устройство."
@@ -57,24 +66,23 @@ async def check_and_send_alerts(device_id: str, device_name: str, battery: float
     else:
         return  # No alert needed
 
-    # Check if we should send (cooldown)
-    if not await database.should_send_alert(device_id, alert_type, cooldown_hours=6):
-        logger.info(f"Alert {alert_type} for {device_id} skipped (cooldown)")
-        return
-
-    # Get all subscribers
+    # Get all subscribers (skip without consuming the cooldown if nobody listens)
     subscribers = await database.get_all_subscribers()
     if not subscribers:
         logger.info("No subscribers to notify")
+        return
+
+    # Atomically claim the cooldown slot before sending. Doing the check + record
+    # in one write prevents duplicate blasts when two readings arrive concurrently
+    # (the webhook fires this as a detached task on every reading).
+    if not await database.claim_alert_slot(device_id, alert_type, cooldown_hours=6):
+        logger.info(f"Alert {alert_type} for {device_id} skipped (cooldown)")
         return
 
     # Send to all subscribers
     logger.info(f"Sending {alert_type} alert to {len(subscribers)} subscribers")
     for chat_id in subscribers:
         await send_telegram_message(chat_id, message)
-
-    # Record alert sent
-    await database.record_alert_sent(device_id, alert_type)
 
 
 def _format_duration(seconds: float) -> str:
@@ -115,7 +123,13 @@ async def check_device_offline():
 
         alert_type = "device_offline"
 
-        if not await database.should_send_alert(device_id, alert_type, cooldown_hours=6):
+        subscribers = await database.get_all_subscribers()
+        if not subscribers:
+            logger.info("No subscribers for offline alert")
+            continue
+
+        # Atomic claim prevents duplicate offline alerts if checks overlap.
+        if not await database.claim_alert_slot(device_id, alert_type, cooldown_hours=6):
             logger.debug(f"Offline alert for {device_name} skipped (cooldown)")
             continue
 
@@ -123,21 +137,14 @@ async def check_device_offline():
         expected_min = interval_sec // 60
         message = (
             f"📡 <b>Пропущены показания!</b>\n\n"
-            f"📱 {device_name}\n"
+            f"📱 {html.escape(device_name)}\n"
             f"⏱ Последний сигнал: <b>{_format_duration(silence)} назад</b>\n"
             f"📊 Пропущено: <b>~{missed}</b> показаний\n"
             f"⚠️ Ожидался каждые {expected_min} мин"
         )
 
-        subscribers = await database.get_all_subscribers()
-        if not subscribers:
-            logger.info("No subscribers for offline alert")
-            continue
-
         logger.warning(f"Device {device_name} offline for {_format_duration(silence)}, alerting {len(subscribers)} subscribers")
         for chat_id in subscribers:
             await send_telegram_message(chat_id, message)
-
-        await database.record_alert_sent(device_id, alert_type)
 
 

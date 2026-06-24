@@ -295,6 +295,28 @@ async def record_alert_sent(device_id: str, alert_type: str):
         await db.commit()
 
 
+async def claim_alert_slot(device_id: str, alert_type: str, cooldown_hours: int = 6) -> bool:
+    """Atomically claim the right to send an alert.
+
+    Combines the cooldown check and the record into a single conditional INSERT,
+    so two concurrent callers can't both pass the check and double-send. SQLite
+    serializes writes, so exactly one INSERT wins. Returns True if claimed (caller
+    should send), False if a recent alert already exists (cooldown active).
+    """
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=cooldown_hours)).strftime('%Y-%m-%d %H:%M:%S')
+        cursor = await db.execute("""
+            INSERT INTO alerts_sent (device_id, alert_type)
+            SELECT ?, ?
+            WHERE NOT EXISTS (
+                SELECT 1 FROM alerts_sent
+                WHERE device_id = ? AND alert_type = ? AND sent_at > ?
+            )
+        """, (device_id, alert_type, device_id, alert_type, cutoff))
+        await db.commit()
+        return cursor.rowcount > 0
+
+
 # ==================== Daily Report Functions ====================
 
 async def get_24h_stats(device_id: str, start_time: Optional[datetime] = None, end_time: Optional[datetime] = None) -> dict:
@@ -448,6 +470,16 @@ async def get_alerts_24h(device_id: str, start_time: Optional[datetime] = None, 
             """, (device_id, start_str))
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]
+
+
+async def get_device_max_gravity(device_id: str) -> Optional[float]:
+    """Get the highest gravity ever recorded for a device (proxy for original gravity)."""
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        cursor = await db.execute(
+            "SELECT MAX(gravity) FROM readings WHERE device_id = ?", (device_id,)
+        )
+        row = await cursor.fetchone()
+        return row[0] if row and row[0] is not None else None
 
 
 def get_expected_readings_count(interval_sec: int = 900) -> int:

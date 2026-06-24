@@ -1,3 +1,4 @@
+import html
 from datetime import datetime, timedelta, timezone
 import database
 from typing import Optional
@@ -84,8 +85,11 @@ async def generate_daily_report(device_id: str, device_name: str) -> Optional[st
     # Get fermentation status
     ferm_status, ferm_code = get_fermentation_status(gravity_delta)
 
-    # Calculate ABV estimate (assuming OG is max gravity seen)
-    abv = calculate_abv(stats['grav_max'], last_reading['gravity'])
+    # Calculate ABV estimate. OG = highest gravity ever seen for this device
+    # (the start of fermentation), not just yesterday's max — otherwise ABV
+    # collapses toward 0 once fermentation slows.
+    og = await database.get_device_max_gravity(device_id) or stats['grav_max']
+    abv = calculate_abv(og, last_reading['gravity'])
 
     # Get battery status with icon (use last reading of the day)
     batt_status, batt_code = get_battery_status(last_reading['battery'])
@@ -124,6 +128,7 @@ async def generate_daily_report(device_id: str, device_name: str) -> Optional[st
         alert_type_names = {
             "battery_low": "🪫 Низкий заряд",
             "battery_critical": "🚨 Крит. заряд",
+            "device_offline": "📡 Нет данных",
         }
         alerts_section = f"⚠️ <b>СОБЫТИЯ:</b> {len(alerts)} шт."
         for alert in alerts:
@@ -136,7 +141,7 @@ async def generate_daily_report(device_id: str, device_name: str) -> Optional[st
     # Build message
     message = f"""📊 <b>ЕЖЕДНЕВНЫЙ ОТЧЁТ</b>
 📅 {yesterday_utc7.strftime("%d.%m.%Y")}
-📱 <b>{device_name}</b>
+📱 <b>{html.escape(device_name)}</b>
 ━━━━━━━━━━━━━━
 
 🌡 <b>ТЕМПЕРАТУРА:</b>
