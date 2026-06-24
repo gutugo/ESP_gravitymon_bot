@@ -20,8 +20,12 @@
    |---------|-------|
    | URL | `http://YOUR_SERVER_IP:8080/api/v1/webhook` |
    | Header 1 | `Content-Type: application/json` |
-   | Header 2 | *(leave empty)* |
+   | Header 2 | `Authorization: Bearer YOUR_API_TOKEN` |
    | Format | iSpindel |
+
+   > **Authentication is required.** The server rejects requests without the
+   > `Authorization` header (HTTP 401). Use the `API_TOKEN` value configured in
+   > the server's `.env`. Both the URL and the header must be set.
 
 4. **Save and Reboot**
    - Click **Save**
@@ -35,7 +39,7 @@ If you have access to the device configuration file, update these fields:
 {
   "http_post_target": "http://YOUR_SERVER_IP:8080/api/v1/webhook",
   "http_post_header1": "Content-Type: application/json",
-  "http_post_header2": ""
+  "http_post_header2": "Authorization: Bearer YOUR_API_TOKEN"
 }
 ```
 
@@ -55,6 +59,7 @@ To verify data is being received:
 |---------|----------|
 | No data in bot | Check WiFi connection on ESP device |
 | Connection error | Verify URL is correct (no typos) |
+| 401 / Unauthorized | Header 2 missing or wrong token — set `Authorization: Bearer YOUR_API_TOKEN` exactly |
 | Device not found | Wait for next sleep cycle (up to 15 min) |
 | Wrong data format | Ensure Format is set to "iSpindel" |
 
@@ -78,8 +83,12 @@ To verify data is being received:
    |----------|----------|
    | URL | `http://YOUR_SERVER_IP:8080/api/v1/webhook` |
    | Header 1 | `Content-Type: application/json` |
-   | Header 2 | *(оставить пустым)* |
+   | Header 2 | `Authorization: Bearer YOUR_API_TOKEN` |
    | Format | iSpindel |
+
+   > **Требуется аутентификация.** Сервер отклоняет запросы без заголовка
+   > `Authorization` (HTTP 401). Используйте значение `API_TOKEN` из `.env`
+   > сервера. Нужно задать и URL, и заголовок.
 
 4. **Сохраните и перезагрузите**
    - Нажмите **Save**
@@ -93,7 +102,7 @@ To verify data is being received:
 {
   "http_post_target": "http://YOUR_SERVER_IP:8080/api/v1/webhook",
   "http_post_header1": "Content-Type: application/json",
-  "http_post_header2": ""
+  "http_post_header2": "Authorization: Bearer YOUR_API_TOKEN"
 }
 ```
 
@@ -113,6 +122,7 @@ To verify data is being received:
 |----------|---------|
 | Нет данных в боте | Проверьте WiFi подключение на ESP устройстве |
 | Ошибка соединения | Проверьте правильность URL (без опечаток) |
+| 401 / Unauthorized | Header 2 отсутствует или неверный токен — задайте `Authorization: Bearer YOUR_API_TOKEN` точно |
 | Устройство не найдено | Подождите следующий цикл сна (до 15 мин) |
 | Неверный формат данных | Убедитесь, что Format установлен в "iSpindel" |
 
