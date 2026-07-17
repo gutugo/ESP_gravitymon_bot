@@ -50,8 +50,14 @@ def get_signal_quality(rssi: float) -> str:
         return "Слабый"
 
 
-async def generate_daily_report(device_id: str, device_name: str) -> Optional[str]:
-    """Generate formatted daily report message."""
+async def generate_daily_report(
+    device_id: str, device_name: str, device_number: Optional[int] = None
+) -> Optional[str]:
+    """Generate formatted daily report message.
+
+    device_number, when given, prefixes the header as "Устройство N: <name>"
+    so multiple reports sent in a row are easy to tell apart.
+    """
 
     # Calculate yesterday's day boundaries in UTC+7, convert to UTC for DB
     now_utc7 = datetime.now(TZ_UTC7)
@@ -139,9 +145,14 @@ async def generate_daily_report(device_id: str, device_name: str) -> Optional[st
             alerts_section += f"\n├ {alert_time_local.strftime('%H:%M')} — {alert_name}"
 
     # Build message
+    if device_number is not None:
+        device_line = f"📱 <b>Устройство {device_number}: {html.escape(device_name)}</b>"
+    else:
+        device_line = f"📱 <b>{html.escape(device_name)}</b>"
+
     message = f"""📊 <b>ЕЖЕДНЕВНЫЙ ОТЧЁТ</b>
 📅 {yesterday_utc7.strftime("%d.%m.%Y")}
-📱 <b>{html.escape(device_name)}</b>
+{device_line}
 ━━━━━━━━━━━━━━
 
 🌡 <b>ТЕМПЕРАТУРА:</b>
