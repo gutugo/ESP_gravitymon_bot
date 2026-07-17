@@ -168,7 +168,10 @@ generate alerts.
 
 ## Daily Reports
 
-Automated reports are sent daily at 08:00 (UTC+7) including:
+Automated reports are sent daily at 08:00 (UTC+7). One message is sent per
+device; when more than one device is monitored, each report header is numbered
+(`📱 Устройство 1: <name>`, `📱 Устройство 2: <name>`, …) so the back-to-back
+messages are easy to tell apart. Each report includes:
 
 - Temperature statistics (min/max/average)
 - Gravity delta and fermentation status
@@ -177,6 +180,9 @@ Automated reports are sent daily at 08:00 (UTC+7) including:
 - Signal quality metrics
 - Missed packet count
 - Alert summary
+
+> The manual `/report` command reports the single default device and is left
+> unnumbered.
 
 ## Project Structure
 
