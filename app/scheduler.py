@@ -36,11 +36,11 @@ async def send_daily_reports():
         logger.info(f"Generating reports for {len(devices)} device(s), sending to {len(subscribers)} subscriber(s)")
 
         # Generate and send report for each device
-        for device in devices:
+        for device_number, device in enumerate(devices, start=1):
             device_id = device['device_id']
             device_name = device['name']
 
-            report = await generate_daily_report(device_id, device_name)
+            report = await generate_daily_report(device_id, device_name, device_number)
             if not report:
                 logger.warning(f"No data for device {device_name}, skipping")
                 continue

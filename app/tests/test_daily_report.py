@@ -119,6 +119,33 @@ async def test_generate_daily_report_happy_path():
     assert "TestDevice" in report
     assert "18.0°C" in report
     assert "1.0500" in report
+    # No device_number → no "Устройство N:" prefix
+    assert "Устройство" not in report
+
+
+async def test_generate_daily_report_device_number_prefix():
+    stats = {
+        "temp_min": 18.0, "temp_max": 22.0, "temp_avg": 20.0,
+        "grav_min": 1.040, "grav_max": 1.050, "grav_avg": 1.045,
+        "batt_min": 3.7, "batt_max": 3.9, "batt_avg": 3.8,
+        "rssi_avg": -55.0, "reading_count": 90,
+    }
+    first = {"gravity": 1.050, "temperature": 20, "battery": 3.9, "timestamp": "2026-03-01 00:00:00", "interval_sec": 900}
+    last = {"gravity": 1.040, "temperature": 21, "battery": 3.8, "timestamp": "2026-03-01 23:00:00"}
+
+    with (
+        patch("daily_report.database.get_24h_stats", AsyncMock(return_value=stats)),
+        patch("daily_report.database.get_first_reading_24h", AsyncMock(return_value=first)),
+        patch("daily_report.database.get_last_reading_in_period", AsyncMock(return_value=last)),
+        patch("daily_report.database.get_alerts_24h", AsyncMock(return_value=[])),
+        patch("daily_report.database.get_avg_interval", AsyncMock(return_value=900.0)),
+        patch("daily_report.database.get_device_interval", AsyncMock(return_value=900)),
+        patch("daily_report.database.get_device_max_gravity", AsyncMock(return_value=1.050)),
+    ):
+        report = await generate_daily_report("abc123", "TestDevice", 2)
+
+    assert report is not None
+    assert "Устройство 2: TestDevice" in report
 
 
 async def test_generate_daily_report_no_stats():
