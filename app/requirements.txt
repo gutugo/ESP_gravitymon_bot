@@ -1,23 +1,30 @@
+# Pinned deliberately (==, not >=) so `docker compose build` is reproducible.
+# These are the exact versions the suite was last green against (91 passed) and
+# that install cleanly on the python:3.11-slim base image.
+#
+# To update: bump here, rebuild, run `pytest` in app/, and only then commit.
+# Note matplotlib requires Python >=3.11, so it sets the floor for the base image.
+
 # Telegram Bot
-aiogram>=3.4.0
+aiogram==3.30.0
 
 # API Server
-fastapi>=0.110.0
-uvicorn[standard]>=0.27.0
-pydantic>=2.0.0
-pydantic-settings>=2.0.0
+fastapi==0.140.13
+uvicorn[standard]==0.51.0
+pydantic==2.13.4
+pydantic-settings==2.14.2
 
 # Database
-aiosqlite>=0.19.0
+aiosqlite==0.22.1
 
 # Data Processing & Visualization
-matplotlib>=3.8.0
-openpyxl>=3.1.0
+matplotlib==3.11.1
+openpyxl==3.1.5
 
 # Scheduler
-apscheduler>=3.10.0
-pytz>=2024.1
+apscheduler==3.11.3
+pytz==2026.3.post1
 
 # Utilities
-python-dotenv>=1.0.0
-httpx>=0.26.0
+python-dotenv==1.2.2
+httpx==0.28.1
